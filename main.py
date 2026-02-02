@@ -33,26 +33,33 @@ AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 SCALP_EMA_FAST = int(os.getenv("SCALP_EMA_FAST", "9"))
 SCALP_EMA_SLOW = int(os.getenv("SCALP_EMA_SLOW", "21"))
 SCALP_RSI_LEN = int(os.getenv("SCALP_RSI_LEN", "14"))
-SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "45"))
-SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "75"))
-SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.1"))
+SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "50"))
+SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "70"))
+SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.3"))
 SCALP_ATR_LEN = int(os.getenv("SCALP_ATR_LEN", "14"))
 SCALP_R_MULT = float(os.getenv("SCALP_R_MULT", "2.0"))
-SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "3"))
-SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "2"))
+SCALP_BREAKOUT_LOOKBACK = int(os.getenv("SCALP_BREAKOUT_LOOKBACK", "5"))
+SCALP_SOLID_BODY_MIN = float(os.getenv("SCALP_SOLID_BODY_MIN", "0.6"))
+SCALP_TX_VALUE_MIN = float(os.getenv("SCALP_TX_VALUE_MIN", "5000000000"))
+SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "7"))
+SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "5"))
 
 # Swing rules (1d data)
 SWING_EMA_FAST = int(os.getenv("SWING_EMA_FAST", "20"))
 SWING_EMA_SLOW = int(os.getenv("SWING_EMA_SLOW", "50"))
 SWING_RSI_LEN = int(os.getenv("SWING_RSI_LEN", "14"))
-SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "40"))
-SWING_RSI_MAX = float(os.getenv("SWING_RSI_MAX", "70"))
-SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.0"))
+SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "45"))
+SWING_RSI_MAX = float(os.getenv("SWING_RSI_MAX", "65"))
+SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.2"))
 SWING_ATR_LEN = int(os.getenv("SWING_ATR_LEN", "14"))
 SWING_SL_ATR = float(os.getenv("SWING_SL_ATR", "1.5"))
 SWING_R_MULT = float(os.getenv("SWING_R_MULT", "2.0"))
-SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "3"))
-SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "2"))
+SWING_BREAKOUT_LOOKBACK = int(os.getenv("SWING_BREAKOUT_LOOKBACK", "20"))
+SWING_SOLID_BODY_MIN = float(os.getenv("SWING_SOLID_BODY_MIN", "0.55"))
+SWING_UPPER_SHADOW_MAX = float(os.getenv("SWING_UPPER_SHADOW_MAX", "0.4"))
+SWING_EMA_SLOPE_LOOKBACK = int(os.getenv("SWING_EMA_SLOPE_LOOKBACK", "3"))
+SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "6"))
+SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "4"))
 
 CA_CACHE_MINUTES = int(os.getenv("CA_CACHE_MINUTES", "15"))
 
@@ -68,6 +75,7 @@ _scalping_cache = {"items": [], "updated_at": None, "error": None}
 _swing_cache = {"items": [], "updated_at": None, "error": None}
 _ai_cache = {}
 _ca_cache = {"items": [], "updated_at": None, "error": None, "at": None}
+_scalp_call_base = {}
 
 _LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "Asia/Jakarta"))
 
@@ -484,29 +492,54 @@ def scan_scalping():
             close_s = df["Close"].squeeze()
             high_s = df["High"].squeeze()
             low_s = df["Low"].squeeze()
+            open_s = df["Open"].squeeze()
             vol_s = df["Volume"].squeeze()
 
             last_close = float(close_s.iloc[-1])
             prev_close = float(close_s.iloc[-2])
             change = ((last_close - prev_close) / prev_close) * 100
 
-            ema_fast = ema(close_s, SCALP_EMA_FAST).iloc[-1]
-            ema_slow = ema(close_s, SCALP_EMA_SLOW).iloc[-1]
+            ema_fast_series = ema(close_s, SCALP_EMA_FAST)
+            ema_slow_series = ema(close_s, SCALP_EMA_SLOW)
+            ema_fast = ema_fast_series.iloc[-1]
+            ema_slow = ema_slow_series.iloc[-1]
             rsi_val = rsi(close_s, SCALP_RSI_LEN).iloc[-1]
-            vwap_val = vwap(high_s, low_s, close_s, vol_s).iloc[-1]
+            vwap_series = vwap(high_s, low_s, close_s, vol_s)
+            vwap_val = vwap_series.iloc[-1]
             vwap_diff = (last_close / vwap_val - 1) * 100
             avg_vol = vol_s.tail(20).mean()
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
             atr_val = atr(high_s, low_s, close_s, SCALP_ATR_LEN).iloc[-1]
 
-            momentum_3 = close_s.iloc[-1] > close_s.iloc[-2] > close_s.iloc[-3]
+            tx_value = float((close_s * vol_s).sum())
+            vwap_rising = vwap_series.iloc[-1] > vwap_series.iloc[-2]
+            ema_gap = ema_fast - ema_slow
+            ema_gap_prev = ema_fast_series.iloc[-2] - ema_slow_series.iloc[-2]
+            ema_widening = ema_gap > ema_gap_prev
+
+            lookback = max(2, SCALP_BREAKOUT_LOOKBACK)
+            recent_high = high_s.iloc[-lookback - 1 : -1].max()
+            break_high = last_close > recent_high if pd.notna(recent_high) else False
+
+            def solid_green(idx):
+                body = abs(close_s.iloc[idx] - open_s.iloc[idx])
+                rng = high_s.iloc[idx] - low_s.iloc[idx]
+                if rng <= 0:
+                    return False
+                return close_s.iloc[idx] > open_s.iloc[idx] and (body / rng) >= SCALP_SOLID_BODY_MIN
+
+            momentum_2 = solid_green(-1) and solid_green(-2)
+
             conditions = [
+                ("tx_value_min", tx_value >= SCALP_TX_VALUE_MIN),
                 ("price_above_vwap", last_close > vwap_val),
+                ("vwap_rising", vwap_rising),
                 ("ema_trend", ema_fast > ema_slow),
+                ("ema_widening", ema_widening),
                 ("rsi_ok", SCALP_RSI_MIN <= rsi_val <= SCALP_RSI_MAX),
                 ("vol_spike", vol_spike >= SCALP_VOL_SPIKE),
-                ("momentum_3", momentum_3),
-                ("green_bar", change >= 0),
+                ("break_high_minor", break_high),
+                ("momentum_2_green", momentum_2),
             ]
             score, reasons = _score_conditions(conditions)
 
@@ -514,6 +547,18 @@ def scan_scalping():
                 entry, sl, tp, risk = _trade_plan(
                     last_close, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
                 )
+                call_key = symbol
+                if call_key not in _scalp_call_base:
+                    _scalp_call_base[call_key] = {
+                        "price": last_close,
+                        "at": _now_iso(),
+                    }
+                call_base = _scalp_call_base[call_key]
+                call_price = call_base["price"]
+                change_from_call = (
+                    ((last_close - call_price) / call_price) * 100 if call_price else None
+                )
+
                 item = {
                     "ticker": symbol,
                     "close": _format_price(last_close),
@@ -523,6 +568,10 @@ def scan_scalping():
                     "ema_slow": _format_price(ema_slow),
                     "rsi": round(float(rsi_val), 2),
                     "vol_spike": round(float(vol_spike), 2),
+                    "tx_value": _format_price(tx_value),
+                    "call_price": _format_price(call_price),
+                    "call_at": call_base["at"],
+                    "change_from_call_pct": _format_price(change_from_call),
                     "entry": entry,
                     "sl": sl,
                     "tp": tp,
@@ -568,28 +617,44 @@ def scan_swing():
             close_s = df["Close"].squeeze()
             high_s = df["High"].squeeze()
             low_s = df["Low"].squeeze()
+            open_s = df["Open"].squeeze()
             vol_s = df["Volume"].squeeze()
 
             last_close = float(close_s.iloc[-1])
             prev_close = float(close_s.iloc[-2])
             change = ((last_close - prev_close) / prev_close) * 100
 
-            ema_fast = ema(close_s, SWING_EMA_FAST).iloc[-1]
-            ema_slow = ema(close_s, SWING_EMA_SLOW).iloc[-1]
+            ema_fast_series = ema(close_s, SWING_EMA_FAST)
+            ema_slow_series = ema(close_s, SWING_EMA_SLOW)
+            ema_fast = ema_fast_series.iloc[-1]
+            ema_slow = ema_slow_series.iloc[-1]
             rsi_val = rsi(close_s, SWING_RSI_LEN).iloc[-1]
             avg_vol = vol_s.tail(20).mean()
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
             atr_val = atr(high_s, low_s, close_s, SWING_ATR_LEN).iloc[-1]
 
             above_fast = last_close > ema_fast
-            up_3 = close_s.iloc[-1] > close_s.iloc[-2] > close_s.iloc[-3]
+            ema_slope = ema_fast - ema_fast_series.iloc[-SWING_EMA_SLOPE_LOOKBACK]
+
+            lookback = max(5, SWING_BREAKOUT_LOOKBACK)
+            recent_high = high_s.iloc[-lookback - 1 : -1].max()
+            break_res = last_close > recent_high if pd.notna(recent_high) else False
+
+            body = abs(close_s.iloc[-1] - open_s.iloc[-1])
+            rng = high_s.iloc[-1] - low_s.iloc[-1]
+            body_ratio = body / rng if rng > 0 else 0
+            upper_shadow = high_s.iloc[-1] - max(close_s.iloc[-1], open_s.iloc[-1])
+            upper_shadow_ratio = upper_shadow / rng if rng > 0 else 0
+
             conditions = [
                 ("above_ema_fast", above_fast),
                 ("ema_trend", ema_fast > ema_slow),
+                ("ema_slope_up", ema_slope > 0),
                 ("rsi_ok", SWING_RSI_MIN <= rsi_val <= SWING_RSI_MAX),
                 ("vol_spike", vol_spike >= SWING_VOL_SPIKE),
-                ("momentum_3", up_3),
-                ("green_bar", change >= 0),
+                ("break_resistance", break_res),
+                ("solid_body", body_ratio >= SWING_SOLID_BODY_MIN),
+                ("no_long_upper", upper_shadow_ratio <= SWING_UPPER_SHADOW_MAX),
             ]
             score, reasons = _score_conditions(conditions)
 

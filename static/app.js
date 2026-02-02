@@ -1,6 +1,23 @@
 const fmt = (value) => {
-  if (value === null || value === undefined) return "-";
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
   return value;
+};
+
+const formatNumber = (value, digits = 2) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+};
+
+const formatCompact = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return new Intl.NumberFormat("id-ID", {
+    notation: "compact",
+    compactDisplay: "short",
+    maximumFractionDigits: 2,
+  }).format(value);
 };
 
 const statusBadge = (status) => {
@@ -31,6 +48,9 @@ const buildTable = (items, kind) => {
             <th>Change%</th>
             <th>RSI</th>
             <th>Vol</th>
+            <th>Call</th>
+            <th>Chg Call%</th>
+            <th>Tx Value</th>
             <th>Entry</th>
             <th>SL</th>
             <th>TP</th>
@@ -44,13 +64,16 @@ const buildTable = (items, kind) => {
         <td>${statusBadge(item.status)}</td>
         <td>${fmt(item.score)}</td>
         <td>${fmt(item.ticker)}</td>
-        <td>${fmt(item.close)}</td>
-        <td>${fmt(item.change_pct)}</td>
+        <td>${formatNumber(item.close, 2)}</td>
+        <td>${formatNumber(item.change_pct, 2)}</td>
         <td>${fmt(item.rsi)}</td>
-        <td>${fmt(item.vol_spike)}</td>
-        <td>${fmt(item.entry)}</td>
-        <td>${fmt(item.sl)}</td>
-        <td>${fmt(item.tp)}</td>
+        <td>${formatNumber(item.vol_spike, 2)}</td>
+        <td>${formatNumber(item.call_price, 2)}</td>
+        <td>${formatNumber(item.change_from_call_pct, 2)}</td>
+        <td>${formatCompact(item.tx_value)}</td>
+        <td>${formatNumber(item.entry, 2)}</td>
+        <td>${formatNumber(item.sl, 2)}</td>
+        <td>${formatNumber(item.tp, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
       </tr>
   `).join("");
@@ -92,16 +115,16 @@ const renderFundamentals = (data) => {
   document.getElementById("fundamental-asof").textContent = data.as_of || "-";
 
   const rows = [
-    ["Market Cap", ratios.market_cap],
-    ["PBV", ratios.pbv],
-    ["BVPS", ratios.bvps],
-    ["PER", ratios.per],
-    ["EPS", ratios.eps],
-    ["Net Profit Margin", ratios.net_profit_margin],
-    ["DER", ratios.der],
-    ["ROE", ratios.roe],
-    ["Nilai Wajar (Market Cap)", ratios.fair_value_market_cap],
-    ["Harga Wajar (Target MC)", ratios.fair_price_target_mc],
+    ["Market Cap", formatCompact(ratios.market_cap)],
+    ["PBV", formatNumber(ratios.pbv, 2)],
+    ["BVPS", formatNumber(ratios.bvps, 2)],
+    ["PER", formatNumber(ratios.per, 2)],
+    ["EPS", formatNumber(ratios.eps, 2)],
+    ["Net Profit Margin (%)", formatNumber(ratios.net_profit_margin, 2)],
+    ["DER", formatNumber(ratios.der, 2)],
+    ["ROE (%)", formatNumber(ratios.roe, 2)],
+    ["Nilai Wajar (Market Cap)", formatCompact(ratios.fair_value_market_cap)],
+    ["Harga Wajar (Target MC)", formatNumber(ratios.fair_price_target_mc, 2)],
     ["PBV Band", ratios.pbv_band],
   ]
     .map(([label, value]) => `
@@ -114,14 +137,14 @@ const renderFundamentals = (data) => {
 
   const inputsHtml = `
     <div class="fund-subtitle">Input Data</div>
-    <div class="fund-row"><span>Price</span><span>${fmt(inputs.price)}</span></div>
-    <div class="fund-row"><span>Shares Outstanding</span><span>${fmt(inputs.shares_outstanding)}</span></div>
-    <div class="fund-row"><span>Net Income</span><span>${fmt(inputs.net_income)}</span></div>
-    <div class="fund-row"><span>Revenue</span><span>${fmt(inputs.revenue)}</span></div>
-    <div class="fund-row"><span>Equity</span><span>${fmt(inputs.equity)}</span></div>
-    <div class="fund-row"><span>Liabilities</span><span>${fmt(inputs.liabilities)}</span></div>
-    <div class="fund-row"><span>PE Wajar</span><span>${fmt(inputs.pe_wajar)}</span></div>
-    <div class="fund-row"><span>Target Market Cap</span><span>${fmt(inputs.target_market_cap)}</span></div>
+    <div class="fund-row"><span>Price</span><span>${formatNumber(inputs.price, 2)}</span></div>
+    <div class="fund-row"><span>Shares Outstanding</span><span>${formatCompact(inputs.shares_outstanding)}</span></div>
+    <div class="fund-row"><span>Net Income</span><span>${formatCompact(inputs.net_income)}</span></div>
+    <div class="fund-row"><span>Revenue</span><span>${formatCompact(inputs.revenue)}</span></div>
+    <div class="fund-row"><span>Equity</span><span>${formatCompact(inputs.equity)}</span></div>
+    <div class="fund-row"><span>Liabilities</span><span>${formatCompact(inputs.liabilities)}</span></div>
+    <div class="fund-row"><span>PE Wajar</span><span>${formatNumber(inputs.pe_wajar, 2)}</span></div>
+    <div class="fund-row"><span>Target Market Cap</span><span>${formatCompact(inputs.target_market_cap)}</span></div>
   `;
 
   document.getElementById("fundamental-body").innerHTML = rows + inputsHtml;
