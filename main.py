@@ -13,6 +13,9 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify, render_template, request
+from dotenv import load_dotenv
+
+load_dotenv()
 
 APP_TITLE = "Scanner Emiten: Scalping & Swing"
 LOCAL_TICKERS_CSV = "all.csv"
@@ -24,8 +27,10 @@ SCALPING_SCAN_SECONDS = int(os.getenv("SCALPING_SCAN_SECONDS", "60"))
 SWING_SCAN_SECONDS = int(os.getenv("SWING_SCAN_SECONDS", "300"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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").strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
+OPENROUTER_REFERER = os.getenv("OPENROUTER_REFERER", "").strip()
+OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE", "").strip()
 AI_COOLDOWN_MINUTES = int(os.getenv("AI_COOLDOWN_MINUTES", "20"))
 AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 
@@ -151,8 +156,8 @@ def _score_conditions(conditions):
     return score, reasons
 
 
-def _ai_cache_key(kind, ticker):
-    return f"{kind}:{ticker}"
+def _ai_cache_key(kind, key):
+    return f"{kind}:{key}"
 
 
 def _ai_allowed():
@@ -167,25 +172,55 @@ def _ai_recent(entry):
 
 
 def _ai_prompt(item, kind):
-    return (
+    base = (
         "You are a trading assistant. Provide a short, structured analysis in JSON only. "
         "Fields: bias (bullish|neutral|bearish), setup, risk, confidence (1-10), notes. "
         "Keep it concise and grounded in the numbers.\n\n"
-        f"Context: {kind} signal on IDX.\n"
-        f"Ticker: {item['ticker']}\n"
-        f"Close: {item['close']}\n"
-        f"Change%: {item['change_pct']}\n"
-        f"RSI: {item['rsi']}\n"
-        f"Vol spike: {item['vol_spike']}\n"
-        f"Entry: {item['entry']}, SL: {item['sl']}, TP: {item['tp']}\n"
-        f"Score: {item['score']}, Reasons: {', '.join(item['reasons'])}\n"
     )
+    if kind in ("scalping", "swing"):
+        return (
+            base
+            + f"Context: {kind} signal on IDX.\n"
+            + f"Ticker: {item['ticker']}\n"
+            + f"Close: {item['close']}\n"
+            + f"Change%: {item['change_pct']}\n"
+            + f"RSI: {item['rsi']}\n"
+            + f"Vol spike: {item['vol_spike']}\n"
+            + f"Entry: {item['entry']}, SL: {item['sl']}\n"
+            + f"TP1: {item.get('tp1')}, TP2: {item.get('tp2')}, TP3: {item.get('tp3')}\n"
+            + f"Score: {item['score']}, Reasons: {', '.join(item['reasons'])}\n"
+        )
+    if kind == "corporate_action":
+        return (
+            base
+            + "Context: Corporate action news (IDX/KSEI).\n"
+            + f"Title: {item.get('title')}\n"
+            + f"Date: {item.get('date')}\n"
+            + f"Tag: {item.get('tag')}\n"
+            + "Summarize impact and risk for traders.\n"
+        )
+    if kind == "fundamental":
+        return (
+            base
+            + "Context: Fundamental snapshot for IDX.\n"
+            + f"Ticker: {item.get('ticker')}\n"
+            + f"Market Cap: {item.get('market_cap')}\n"
+            + f"PBV: {item.get('pbv')}\n"
+            + f"PER: {item.get('per')}\n"
+            + f"EPS: {item.get('eps')}\n"
+            + f"ROE: {item.get('roe')}\n"
+            + f"DER: {item.get('der')}\n"
+            + f"Net Profit Margin: {item.get('npm')}\n"
+            + "Give a short valuation comment.\n"
+        )
+    return base + "Context: General analysis.\n"
 
 
-def _ai_analyze(item, kind):
+def _ai_analyze(item, kind, key_override=None):
     if not _ai_allowed():
         return None
-    cache_key = _ai_cache_key(kind, item["ticker"])
+    key = key_override if key_override is not None else item.get("ticker", "unknown")
+    cache_key = _ai_cache_key(kind, key)
     cached = _ai_cache.get(cache_key)
     if _ai_recent(cached):
         return cached["data"]
@@ -195,12 +230,17 @@ def _ai_analyze(item, kind):
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
+    if OPENROUTER_REFERER:
+        headers["HTTP-Referer"] = OPENROUTER_REFERER
+    if OPENROUTER_TITLE:
+        headers["X-Title"] = OPENROUTER_TITLE
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
             {"role": "system", "content": "Return valid JSON only."},
             {"role": "user", "content": _ai_prompt(item, kind)},
         ],
+        "response_format": {"type": "json_object"},
         "temperature": 0.2,
         "max_tokens": 240,
     }
@@ -208,7 +248,9 @@ def _ai_analyze(item, kind):
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"].strip()
+        if content.startswith("```"):
+            content = content.strip("`").strip()
         parsed = json.loads(content)
         _ai_cache[cache_key] = {"at": datetime.now(_LOCAL_TZ), "data": parsed}
         return parsed
@@ -357,6 +399,19 @@ def fetch_corporate_actions():
     _ca_cache["at"] = now
     _ca_cache["error"] = None
     return _ca_cache["items"]
+
+
+def _attach_ai_corporate(items):
+    if not _ai_allowed():
+        return items
+    count = 0
+    for item in items:
+        if count >= AI_MAX_ITEMS:
+            break
+        key = item.get("url") or item.get("title") or str(count)
+        item["ai"] = _ai_analyze(item, "corporate_action", key_override=key)
+        count += 1
+    return items
 
 
 def _safe_div(numerator, denominator):
@@ -550,14 +605,18 @@ def scan_scalping():
                 call_key = symbol
                 if call_key not in _scalp_call_base:
                     _scalp_call_base[call_key] = {
-                        "price": last_close,
+                        "entry_price": last_close,
                         "at": _now_iso(),
                     }
                 call_base = _scalp_call_base[call_key]
-                call_price = call_base["price"]
-                change_from_call = (
-                    ((last_close - call_price) / call_price) * 100 if call_price else None
+                entry_base = call_base["entry_price"]
+                change_from_entry = (
+                    ((last_close - entry_base) / entry_base) * 100 if entry_base else None
                 )
+
+                tp1 = _format_price(entry_base * 1.03) if entry_base else None
+                tp2 = _format_price(entry_base * 1.05) if entry_base else None
+                tp3 = _format_price(entry_base * 1.10) if entry_base else None
 
                 item = {
                     "ticker": symbol,
@@ -569,12 +628,15 @@ def scan_scalping():
                     "rsi": round(float(rsi_val), 2),
                     "vol_spike": round(float(vol_spike), 2),
                     "tx_value": _format_price(tx_value),
-                    "call_price": _format_price(call_price),
-                    "call_at": call_base["at"],
-                    "change_from_call_pct": _format_price(change_from_call),
+                    "entry_base": _format_price(entry_base),
+                    "entry_base_at": call_base["at"],
+                    "change_from_entry_pct": _format_price(change_from_entry),
                     "entry": entry,
                     "sl": sl,
                     "tp": tp,
+                    "tp1": tp1,
+                    "tp2": tp2,
+                    "tp3": tp3,
                     "risk": risk,
                     "score": score,
                     "reasons": reasons,
@@ -759,6 +821,7 @@ def api_swing():
 def api_corporate_actions():
     try:
         items = fetch_corporate_actions()
+        items = _attach_ai_corporate(items)
         payload = {"items": items, "updated_at": _ca_cache["updated_at"], "error": None}
     except Exception as exc:
         payload = {"items": [], "updated_at": _ca_cache["updated_at"], "error": str(exc)}
@@ -779,6 +842,18 @@ def api_fundamentals(ticker):
         target_mc = None
 
     data = get_fundamentals(ticker, pe_wajar=pe_wajar, target_market_cap=target_mc)
+    if _ai_allowed():
+        summary = {
+            "ticker": data.get("ticker"),
+            "market_cap": data.get("ratios", {}).get("market_cap"),
+            "pbv": data.get("ratios", {}).get("pbv"),
+            "per": data.get("ratios", {}).get("per"),
+            "eps": data.get("ratios", {}).get("eps"),
+            "roe": data.get("ratios", {}).get("roe"),
+            "der": data.get("ratios", {}).get("der"),
+            "npm": data.get("ratios", {}).get("net_profit_margin"),
+        }
+        data["ai"] = _ai_analyze(summary, "fundamental", key_override=data.get("ticker"))
     return jsonify(data)
 
 

@@ -4,3 +4,4 @@ requests
 tabulate
 flask
 beautifulsoup4
+python-dotenv

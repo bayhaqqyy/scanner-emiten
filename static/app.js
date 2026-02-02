@@ -48,12 +48,14 @@ const buildTable = (items, kind) => {
             <th>Change%</th>
             <th>RSI</th>
             <th>Vol</th>
-            <th>Call</th>
-            <th>Chg Call%</th>
+            <th>Entry0</th>
+            <th>Chg Entry%</th>
             <th>Tx Value</th>
             <th>Entry</th>
             <th>SL</th>
-            <th>TP</th>
+            <th>TP1</th>
+            <th>TP2</th>
+            <th>TP3</th>
             <th>AI</th>
           </tr>
         </thead>
@@ -68,12 +70,14 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.change_pct, 2)}</td>
         <td>${fmt(item.rsi)}</td>
         <td>${formatNumber(item.vol_spike, 2)}</td>
-        <td>${formatNumber(item.call_price, 2)}</td>
-        <td>${formatNumber(item.change_from_call_pct, 2)}</td>
+        <td>${formatNumber(item.entry_base, 2)}</td>
+        <td>${formatNumber(item.change_from_entry_pct, 2)}</td>
         <td>${formatCompact(item.tx_value)}</td>
         <td>${formatNumber(item.entry, 2)}</td>
         <td>${formatNumber(item.sl, 2)}</td>
-        <td>${formatNumber(item.tp, 2)}</td>
+        <td>${formatNumber(item.tp1, 2)}</td>
+        <td>${formatNumber(item.tp2, 2)}</td>
+        <td>${formatNumber(item.tp3, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
       </tr>
   `).join("");
@@ -93,6 +97,7 @@ const buildCorporateTable = (items) => {
             <th>Perihal</th>
             <th>Tanggal</th>
             <th>Sumber</th>
+            <th>AI</th>
           </tr>
         </thead>
         <tbody>
@@ -103,6 +108,7 @@ const buildCorporateTable = (items) => {
         <td>${item.url ? `<a href="${item.url}" target="_blank" rel="noreferrer">${fmt(item.title)}</a>` : fmt(item.title)}</td>
         <td>${fmt(item.date)}</td>
         <td>${fmt(item.source)}</td>
+        <td>${aiBadge(item.ai)}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";
@@ -148,7 +154,12 @@ const renderFundamentals = (data) => {
   `;
 
   document.getElementById("fundamental-body").innerHTML = rows + inputsHtml;
-  document.getElementById("fundamental-note").textContent = data.note || "";
+  const ai = data.ai;
+  const aiText = ai
+    ? `AI: ${ai.bias || "-"} (${ai.confidence || "-"}/10) - ${ai.notes || ""}`
+    : "";
+  document.getElementById("fundamental-note").textContent =
+    [data.note || "", aiText].filter(Boolean).join(" ");
 };
 
 const buildFundamentalUrl = (ticker) => {
