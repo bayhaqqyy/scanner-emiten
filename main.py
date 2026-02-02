@@ -174,7 +174,7 @@ def _ai_recent(entry):
 def _ai_prompt(item, kind):
     base = (
         "You are a trading assistant. Provide a short, structured analysis in JSON only. "
-        "Fields: bias (bullish|neutral|bearish), setup, risk, confidence (1-10), notes. "
+        "Fields: bias (bullish|neutral|bearish), setup, risk, confidence (1-10), summary, action. "
         "Keep it concise and grounded in the numbers.\n\n"
     )
     if kind in ("scalping", "swing"):
@@ -197,7 +197,7 @@ def _ai_prompt(item, kind):
             + f"Title: {item.get('title')}\n"
             + f"Date: {item.get('date')}\n"
             + f"Tag: {item.get('tag')}\n"
-            + "Summarize impact and risk for traders.\n"
+            + "Summarize what the news is about and the likely impact. Provide action guidance.\n"
         )
     if kind == "fundamental":
         return (
@@ -211,7 +211,7 @@ def _ai_prompt(item, kind):
             + f"ROE: {item.get('roe')}\n"
             + f"DER: {item.get('der')}\n"
             + f"Net Profit Margin: {item.get('npm')}\n"
-            + "Give a short valuation comment.\n"
+            + "Give a short valuation comment and action guidance.\n"
         )
     return base + "Context: General analysis.\n"
 

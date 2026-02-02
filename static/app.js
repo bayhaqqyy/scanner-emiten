@@ -32,6 +32,14 @@ const aiBadge = (ai) => {
   return `<span class="ai-pill">${ai.bias}${conf}</span>`;
 };
 
+const aiReport = (ai) => {
+  if (!ai) return "-";
+  const summary = ai.summary || "";
+  const action = ai.action ? ` | ${ai.action}` : "";
+  const text = `${summary}${action}`.trim();
+  return text ? `<div class="ai-report">${text}</div>` : "-";
+};
+
 const buildTable = (items, kind) => {
   if (!items || items.length === 0) {
     return '<div class="empty">Belum ada sinyal sesuai rule. Coba beberapa saat lagi.</div>';
@@ -57,6 +65,7 @@ const buildTable = (items, kind) => {
             <th>TP2</th>
             <th>TP3</th>
             <th>AI</th>
+            <th>AI Report</th>
           </tr>
         </thead>
         <tbody>
@@ -79,6 +88,7 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.tp2, 2)}</td>
         <td>${formatNumber(item.tp3, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
+        <td>${aiReport(item.ai)}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";
@@ -98,6 +108,7 @@ const buildCorporateTable = (items) => {
             <th>Tanggal</th>
             <th>Sumber</th>
             <th>AI</th>
+            <th>AI Report</th>
           </tr>
         </thead>
         <tbody>
@@ -109,6 +120,7 @@ const buildCorporateTable = (items) => {
         <td>${fmt(item.date)}</td>
         <td>${fmt(item.source)}</td>
         <td>${aiBadge(item.ai)}</td>
+        <td>${aiReport(item.ai)}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";
@@ -156,7 +168,7 @@ const renderFundamentals = (data) => {
   document.getElementById("fundamental-body").innerHTML = rows + inputsHtml;
   const ai = data.ai;
   const aiText = ai
-    ? `AI: ${ai.bias || "-"} (${ai.confidence || "-"}/10) - ${ai.notes || ""}`
+    ? `AI: ${ai.bias || "-"} (${ai.confidence || "-"}/10) ${ai.summary || ""} ${ai.action || ""} ${ai.risk || ""}`
     : "";
   document.getElementById("fundamental-note").textContent =
     [data.note || "", aiText].filter(Boolean).join(" ");

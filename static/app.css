@@ -288,6 +288,17 @@ th {
   border: 1px solid rgba(180, 140, 60, 0.35);
 }
 
+.ai-report {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .empty {
   color: var(--muted);
   font-size: 0.9rem;
