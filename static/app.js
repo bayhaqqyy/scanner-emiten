@@ -37,7 +37,39 @@ const aiReport = (ai) => {
   const summary = ai.summary || ai.setup || ai.notes || "";
   const action = ai.action ? ` | ${ai.action}` : "";
   const text = `${summary}${action}`.trim();
-  return text ? `<div class="ai-report">${text}</div>` : "-";
+  return text
+    ? `<div class="ai-report" data-full="${text}">
+         <span class="ai-report-text">${text}</span>
+         <button class="ai-detail-btn" type="button">Detail</button>
+       </div>`
+    : "-";
+};
+
+const reasonLabels = {
+  tx_value_min: "Nilai transaksi >= 5B",
+  price_above_vwap: "Harga > VWAP",
+  vwap_rising: "VWAP naik",
+  ema_trend: "EMA fast > EMA slow",
+  ema_widening: "Gap EMA melebar",
+  rsi_ok: "RSI sesuai",
+  vol_spike: "Volume spike",
+  break_high_minor: "Break high minor",
+  momentum_2_green: "2 candle green solid",
+  above_ema_fast: "Harga > EMA20",
+  ema_slope_up: "EMA20 slope naik",
+  break_resistance: "Break resistance",
+  solid_body: "Body solid",
+  no_long_upper: "No long upper shadow",
+};
+
+const renderReasons = (reasons) => {
+  if (!reasons || reasons.length === 0) return "-";
+  return reasons
+    .map((reason) => {
+      const label = reasonLabels[reason] || reason;
+      return `<span class="reason-chip">${label}</span>`;
+    })
+    .join(" ");
 };
 
 const buildTable = (items, kind) => {
@@ -90,7 +122,7 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.tp3, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
         <td>${aiReport(item.ai)}</td>
-        <td>${item.reasons ? item.reasons.join(", ") : "-"}</td>
+        <td>${renderReasons(item.reasons)}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";
@@ -247,3 +279,29 @@ refresh();
 bindTableClicks();
 bindFundControls();
 setInterval(refresh, window.UI_POLL_SECONDS ? window.UI_POLL_SECONDS * 1000 : 1000);
+
+const openModal = (title, content) => {
+  const modal = document.getElementById("ai-modal");
+  if (!modal) return;
+  modal.querySelector(".ai-modal-title").textContent = title || "AI Report";
+  modal.querySelector(".ai-modal-body").textContent = content || "-";
+  modal.classList.add("open");
+};
+
+const closeModal = () => {
+  const modal = document.getElementById("ai-modal");
+  if (!modal) return;
+  modal.classList.remove("open");
+};
+
+document.addEventListener("click", (event) => {
+  if (event.target.matches(".ai-detail-btn")) {
+    const wrap = event.target.closest(".ai-report");
+    const text = wrap?.getAttribute("data-full") || "-";
+    openModal("AI Report", text);
+    return;
+  }
+  if (event.target.matches(".ai-modal-overlay") || event.target.matches(".ai-modal-close")) {
+    closeModal();
+  }
+});

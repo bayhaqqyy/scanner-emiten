@@ -175,7 +175,7 @@ def _ai_prompt(item, kind):
     base = (
         "You are a trading assistant. Provide a short, structured analysis in JSON only. "
         "Fields: bias (bullish|neutral|bearish), setup, risk, confidence (1-10), summary, action. "
-        "Keep it concise and grounded in the numbers.\n\n"
+        "Answer in Bahasa Indonesia. Keep it concise and grounded in the numbers.\n\n"
     )
     if kind in ("scalping", "swing"):
         return (
@@ -238,7 +238,7 @@ def _ai_analyze(item, kind, key_override=None):
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
-            {"role": "system", "content": "Return valid JSON only."},
+            {"role": "system", "content": "Return valid JSON only. Use Bahasa Indonesia."},
             {"role": "user", "content": _ai_prompt(item, kind)},
         ],
         "response_format": {"type": "json_object"},
