@@ -34,7 +34,7 @@ const aiBadge = (ai) => {
 
 const aiReport = (ai) => {
   if (!ai) return "-";
-  const summary = ai.summary || "";
+  const summary = ai.summary || ai.setup || ai.notes || "";
   const action = ai.action ? ` | ${ai.action}` : "";
   const text = `${summary}${action}`.trim();
   return text ? `<div class="ai-report">${text}</div>` : "-";
@@ -66,6 +66,7 @@ const buildTable = (items, kind) => {
             <th>TP3</th>
             <th>AI</th>
             <th>AI Report</th>
+            <th>Reasons</th>
           </tr>
         </thead>
         <tbody>
@@ -89,6 +90,7 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.tp3, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
         <td>${aiReport(item.ai)}</td>
+        <td>${item.reasons ? item.reasons.join(", ") : "-"}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";

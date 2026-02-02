@@ -197,6 +197,7 @@ def _ai_prompt(item, kind):
             + f"Title: {item.get('title')}\n"
             + f"Date: {item.get('date')}\n"
             + f"Tag: {item.get('tag')}\n"
+            + f"Content: {item.get('content')}\n"
             + "Summarize what the news is about and the likely impact. Provide action guidance.\n"
         )
     if kind == "fundamental":
@@ -251,7 +252,13 @@ def _ai_analyze(item, kind, key_override=None):
         content = data["choices"][0]["message"]["content"].strip()
         if content.startswith("```"):
             content = content.strip("`").strip()
-        parsed = json.loads(content)
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            match = re.search(r"\{.*\}", content, re.DOTALL)
+            parsed = json.loads(match.group(0)) if match else None
+        if not isinstance(parsed, dict):
+            return None
         _ai_cache[cache_key] = {"at": datetime.now(_LOCAL_TZ), "data": parsed}
         return parsed
     except Exception:
@@ -263,8 +270,6 @@ def _attach_ai(items, kind):
         return items
     count = 0
     for item in items:
-        if item.get("status") != "signal":
-            continue
         if count >= AI_MAX_ITEMS:
             break
         item["ai"] = _ai_analyze(item, kind)
@@ -318,6 +323,20 @@ def _parse_ksei_table(html, base_url, category):
             }
         )
     return items
+
+
+def _extract_article_text(url):
+    try:
+        html = _fetch_html(url)
+    except Exception:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = _normalize_space(soup.get_text(" ", strip=True))
+    if not text:
+        return None
+    return text[:2000]
 
 
 def _parse_ksei_today(html, base_url):
@@ -393,6 +412,8 @@ def fetch_corporate_actions():
             item["tag"] = "Penambahan Modal"
         else:
             item["tag"] = "Corporate Action"
+        if item.get("url"):
+            item["content"] = _extract_article_text(item["url"])
 
     _ca_cache["items"] = items[:30]
     _ca_cache["updated_at"] = _now_iso()
