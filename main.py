@@ -27,6 +27,10 @@ SCALPING_SCAN_SECONDS = int(os.getenv("SCALPING_SCAN_SECONDS", "60"))
 SWING_SCAN_SECONDS = int(os.getenv("SWING_SCAN_SECONDS", "300"))
 BSJP_SCAN_SECONDS = int(os.getenv("BSJP_SCAN_SECONDS", "600"))
 BPJS_SCAN_SECONDS = int(os.getenv("BPJS_SCAN_SECONDS", "600"))
+BSJP_VOL_MULT = float(os.getenv("BSJP_VOL_MULT", "1.5"))
+BSJP_VALUE_MIN = float(os.getenv("BSJP_VALUE_MIN", "10000000000"))
+BSJP_RET_MIN = float(os.getenv("BSJP_RET_MIN", "0.5"))
+BPJS_VALUE_MIN = float(os.getenv("BPJS_VALUE_MIN", "2000000000"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -913,7 +917,7 @@ def scan_bpjs():
             change = ((last_close - prev_close) / prev_close) * 100
             tx_value = last_close * last_vol
 
-            if last_close >= prev_close and last_close >= last_open and tx_value > 5_000_000_000:
+            if last_close >= prev_close and last_close >= last_open and tx_value > BPJS_VALUE_MIN:
                 results.append(
                     {
                         "ticker": symbol,
@@ -954,7 +958,7 @@ def scan_bsjp():
             change = ((last_close - prev_close) / prev_close) * 100
             tx_value = last_close * last_vol
 
-            if last_vol >= 2 * vol_ma20 and tx_value > 20_000_000_000 and change > 1:
+            if last_vol >= BSJP_VOL_MULT * vol_ma20 and tx_value > BSJP_VALUE_MIN and change > BSJP_RET_MIN:
                 results.append(
                     {
                         "ticker": symbol,
