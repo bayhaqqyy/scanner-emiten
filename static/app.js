@@ -234,11 +234,51 @@ const bindFundControls = () => {
   });
 };
 
+const buildDailyTable = (items) => {
+  if (!items || items.length === 0) {
+    return '<div class="empty">Belum ada hasil screener.</div>';
+  }
+  const header = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Close</th>
+            <th>Change%</th>
+            <th>Volume</th>
+            <th>Value</th>
+            <th>AI</th>
+            <th>AI Report</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  const rows = items.map((item) => `
+      <tr>
+        <td>
+          <a class="tv-link" href="https://www.tradingview.com/symbols/IDX-${fmt(item.ticker)}/" target="_blank" rel="noreferrer">
+            ${fmt(item.ticker)}
+          </a>
+        </td>
+        <td>${formatNumber(item.close, 2)}</td>
+        <td>${formatNumber(item.change_pct, 2)}</td>
+        <td>${formatCompact(item.volume)}</td>
+        <td>${formatCompact(item.tx_value)}</td>
+        <td>${aiBadge(item.ai)}</td>
+        <td>${aiReport(item.ai)}</td>
+      </tr>
+  `).join("");
+  return header + rows + "</tbody></table></div>";
+};
+
 async function refresh() {
-  const [scalping, swing, corporate] = await Promise.all([
+  const [scalping, swing, corporate, bsjp, bpjs] = await Promise.all([
     fetch("/api/scalping").then((r) => r.json()),
     fetch("/api/swing").then((r) => r.json()),
     fetch("/api/corporate-actions").then((r) => r.json()),
+    fetch("/api/bsjp").then((r) => r.json()),
+    fetch("/api/bpjs").then((r) => r.json()),
   ]);
 
   document.getElementById("scalping-updated").textContent = scalping.updated_at || "-";
@@ -261,6 +301,14 @@ async function refresh() {
   document.getElementById("ca-updated").textContent = corporate.updated_at || "-";
   document.getElementById("ca-error").textContent = corporate.error || "";
   document.getElementById("ca-table").innerHTML = buildCorporateTable(corporate.items);
+
+  document.getElementById("bsjp-updated").textContent = bsjp.updated_at || "-";
+  document.getElementById("bsjp-error").textContent = bsjp.error || "";
+  document.getElementById("bsjp-table").innerHTML = buildDailyTable(bsjp.items);
+
+  document.getElementById("bpjs-updated").textContent = bpjs.updated_at || "-";
+  document.getElementById("bpjs-error").textContent = bpjs.error || "";
+  document.getElementById("bpjs-table").innerHTML = buildDailyTable(bpjs.items);
 }
 
 refresh();

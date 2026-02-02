@@ -25,6 +25,8 @@ REMOTE_TICKERS_CSV = "https://raw.githubusercontent.com/carmensyva/list-emiten/r
 MAX_TICKERS = int(os.getenv("MAX_TICKERS", "60"))
 SCALPING_SCAN_SECONDS = int(os.getenv("SCALPING_SCAN_SECONDS", "60"))
 SWING_SCAN_SECONDS = int(os.getenv("SWING_SCAN_SECONDS", "300"))
+BSJP_SCAN_SECONDS = int(os.getenv("BSJP_SCAN_SECONDS", "600"))
+BPJS_SCAN_SECONDS = int(os.getenv("BPJS_SCAN_SECONDS", "600"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -78,6 +80,8 @@ app = Flask(
 _lock = threading.Lock()
 _scalping_cache = {"items": [], "updated_at": None, "error": None}
 _swing_cache = {"items": [], "updated_at": None, "error": None}
+_bsjp_cache = {"items": [], "updated_at": None, "error": None}
+_bpjs_cache = {"items": [], "updated_at": None, "error": None}
 _ai_cache = {}
 _ca_cache = {"items": [], "updated_at": None, "error": None, "at": None}
 _scalp_call_base = {}
@@ -245,6 +249,17 @@ def _ai_prompt(item, kind):
             + f"Entry: {item['entry']}, SL: {item['sl']}\n"
             + f"TP1: {item.get('tp1')}, TP2: {item.get('tp2')}, TP3: {item.get('tp3')}\n"
             + f"Score: {item['score']}\n"
+        )
+    if kind in ("bsjp", "bpjs"):
+        return (
+            base
+            + f"Context: {kind.upper()} screener on IDX.\n"
+            + f"Ticker: {item.get('ticker')}\n"
+            + f"Close: {item.get('close')}\n"
+            + f"Change%: {item.get('change_pct')}\n"
+            + f"Volume: {item.get('volume')}\n"
+            + f"Value: {item.get('tx_value')}\n"
+            + "Explain why it qualifies and whether it looks good for the next session.\n"
         )
     if kind == "corporate_action":
         return (
@@ -873,6 +888,89 @@ def scan_swing():
     return candidates[:20]
 
 
+def scan_bpjs():
+    results = []
+    tickers = load_tickers()
+    for symbol in tickers:
+        ticker_jk = f"{symbol}.JK"
+        try:
+            df = yf.download(
+                ticker_jk,
+                period="5d",
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
+            )
+            if df.empty or len(df) < 2:
+                continue
+            close_s = df["Close"].squeeze()
+            open_s = df["Open"].squeeze()
+            vol_s = df["Volume"].squeeze()
+            last_close = float(close_s.iloc[-1])
+            prev_close = float(close_s.iloc[-2])
+            last_open = float(open_s.iloc[-1])
+            last_vol = float(vol_s.iloc[-1])
+            change = ((last_close - prev_close) / prev_close) * 100
+            tx_value = last_close * last_vol
+
+            if last_close >= prev_close and last_close >= last_open and tx_value > 5_000_000_000:
+                results.append(
+                    {
+                        "ticker": symbol,
+                        "close": _format_price(last_close),
+                        "change_pct": round(change, 2),
+                        "volume": _format_price(last_vol),
+                        "tx_value": _format_price(tx_value),
+                    }
+                )
+        except Exception:
+            continue
+        time.sleep(0.05)
+    results.sort(key=lambda x: x["tx_value"], reverse=True)
+    return results[:30]
+
+
+def scan_bsjp():
+    results = []
+    tickers = load_tickers()
+    for symbol in tickers:
+        ticker_jk = f"{symbol}.JK"
+        try:
+            df = yf.download(
+                ticker_jk,
+                period="30d",
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
+            )
+            if df.empty or len(df) < 21:
+                continue
+            close_s = df["Close"].squeeze()
+            vol_s = df["Volume"].squeeze()
+            last_close = float(close_s.iloc[-1])
+            prev_close = float(close_s.iloc[-2])
+            last_vol = float(vol_s.iloc[-1])
+            vol_ma20 = float(vol_s.tail(20).mean())
+            change = ((last_close - prev_close) / prev_close) * 100
+            tx_value = last_close * last_vol
+
+            if last_vol >= 2 * vol_ma20 and tx_value > 20_000_000_000 and change > 1:
+                results.append(
+                    {
+                        "ticker": symbol,
+                        "close": _format_price(last_close),
+                        "change_pct": round(change, 2),
+                        "volume": _format_price(last_vol),
+                        "tx_value": _format_price(tx_value),
+                    }
+                )
+        except Exception:
+            continue
+        time.sleep(0.05)
+    results.sort(key=lambda x: x["tx_value"], reverse=True)
+    return results[:30]
+
+
 def _scalping_worker():
     while True:
         try:
@@ -908,11 +1006,45 @@ def _swing_worker():
         time.sleep(SWING_SCAN_SECONDS)
 
 
+def _bpjs_worker():
+    while True:
+        try:
+            items = scan_bpjs()
+            items = _attach_ai(items, "bpjs")
+            with _lock:
+                _bpjs_cache["items"] = items
+                _bpjs_cache["updated_at"] = _now_iso()
+                _bpjs_cache["error"] = None
+        except Exception as exc:
+            with _lock:
+                _bpjs_cache["error"] = str(exc)
+        time.sleep(BPJS_SCAN_SECONDS)
+
+
+def _bsjp_worker():
+    while True:
+        try:
+            items = scan_bsjp()
+            items = _attach_ai(items, "bsjp")
+            with _lock:
+                _bsjp_cache["items"] = items
+                _bsjp_cache["updated_at"] = _now_iso()
+                _bsjp_cache["error"] = None
+        except Exception as exc:
+            with _lock:
+                _bsjp_cache["error"] = str(exc)
+        time.sleep(BSJP_SCAN_SECONDS)
+
+
 def start_workers():
     scalping_thread = threading.Thread(target=_scalping_worker, daemon=True)
     swing_thread = threading.Thread(target=_swing_worker, daemon=True)
+    bsjp_thread = threading.Thread(target=_bsjp_worker, daemon=True)
+    bpjs_thread = threading.Thread(target=_bpjs_worker, daemon=True)
     scalping_thread.start()
     swing_thread.start()
+    bsjp_thread.start()
+    bpjs_thread.start()
 
 
 @app.route("/")
@@ -936,6 +1068,20 @@ def api_scalping():
 def api_swing():
     with _lock:
         payload = dict(_swing_cache)
+    return jsonify(payload)
+
+
+@app.route("/api/bsjp")
+def api_bsjp():
+    with _lock:
+        payload = dict(_bsjp_cache)
+    return jsonify(payload)
+
+
+@app.route("/api/bpjs")
+def api_bpjs():
+    with _lock:
+        payload = dict(_bpjs_cache)
     return jsonify(payload)
 
 
