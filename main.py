@@ -27,7 +27,7 @@ SCALPING_SCAN_SECONDS = int(os.getenv("SCALPING_SCAN_SECONDS", "60"))
 SWING_SCAN_SECONDS = int(os.getenv("SWING_SCAN_SECONDS", "300"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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").strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
 OPENROUTER_REFERER = os.getenv("OPENROUTER_REFERER", "").strip()
 OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE", "").strip()
