@@ -79,7 +79,11 @@ const buildTable = (items, kind) => {
       <tr data-ticker="${fmt(item.ticker)}" data-kind="${kind}">
         <td>${statusBadge(item.status)}</td>
         <td>${fmt(item.score)}</td>
-        <td>${fmt(item.ticker)}</td>
+        <td>
+          <a class="tv-link" href="https://www.tradingview.com/symbols/IDX-${fmt(item.ticker)}/" target="_blank" rel="noreferrer">
+            ${fmt(item.ticker)}
+          </a>
+        </td>
         <td>${formatNumber(item.close, 2)}</td>
         <td>${formatNumber(item.change_pct, 2)}</td>
         <td>${fmt(item.rsi)}</td>
@@ -208,6 +212,7 @@ const bindTableClicks = () => {
     const container = document.getElementById(id);
     if (!container) return;
     container.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
       const row = event.target.closest("tr[data-ticker]");
       if (!row) return;
       const ticker = row.getAttribute("data-ticker");
