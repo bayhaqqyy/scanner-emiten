@@ -331,6 +331,45 @@ th {
   background: rgba(12, 14, 18, 0.9);
 }
 
+.fund-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: flex-end;
+}
+
+.fund-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.fund-controls input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(8, 10, 12, 0.8);
+  color: var(--ink);
+  min-width: 180px;
+}
+
+.fund-controls button {
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 181, 111, 0.5);
+  background: rgba(217, 181, 111, 0.2);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fund-controls button:hover {
+  background: rgba(217, 181, 111, 0.3);
+}
+
 .fund-header {
   display: flex;
   justify-content: space-between;

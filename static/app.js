@@ -100,8 +100,8 @@ const renderFundamentals = (data) => {
     ["Net Profit Margin", ratios.net_profit_margin],
     ["DER", ratios.der],
     ["ROE", ratios.roe],
-    ["Nilai Wajar", ratios.fair_value],
-    ["Target Market Cap", ratios.target_market_cap],
+    ["Nilai Wajar (Market Cap)", ratios.fair_value_market_cap],
+    ["Harga Wajar (Target MC)", ratios.fair_price_target_mc],
     ["PBV Band", ratios.pbv_band],
   ]
     .map(([label, value]) => `
@@ -120,10 +120,22 @@ const renderFundamentals = (data) => {
     <div class="fund-row"><span>Revenue</span><span>${fmt(inputs.revenue)}</span></div>
     <div class="fund-row"><span>Equity</span><span>${fmt(inputs.equity)}</span></div>
     <div class="fund-row"><span>Liabilities</span><span>${fmt(inputs.liabilities)}</span></div>
+    <div class="fund-row"><span>PE Wajar</span><span>${fmt(inputs.pe_wajar)}</span></div>
+    <div class="fund-row"><span>Target Market Cap</span><span>${fmt(inputs.target_market_cap)}</span></div>
   `;
 
   document.getElementById("fundamental-body").innerHTML = rows + inputsHtml;
   document.getElementById("fundamental-note").textContent = data.note || "";
+};
+
+const buildFundamentalUrl = (ticker) => {
+  const pe = document.getElementById("pe-wajar").value;
+  const target = document.getElementById("target-market-cap").value;
+  const params = new URLSearchParams();
+  if (pe) params.set("pe_wajar", pe);
+  if (target) params.set("target_market_cap", target);
+  const qs = params.toString();
+  return `/api/fundamentals/${ticker}${qs ? `?${qs}` : ""}`;
 };
 
 const loadFundamentals = async (ticker) => {
@@ -131,7 +143,8 @@ const loadFundamentals = async (ticker) => {
   document.getElementById("fundamental-selected").textContent = ticker;
   document.getElementById("fundamental-body").innerHTML = '<div class="empty">Loading...</div>';
   try {
-    const data = await fetch(`/api/fundamentals/${ticker}`).then((r) => r.json());
+    const url = buildFundamentalUrl(ticker);
+    const data = await fetch(url).then((r) => r.json());
     renderFundamentals(data);
   } catch (err) {
     document.getElementById("fundamental-body").innerHTML =
@@ -149,6 +162,17 @@ const bindTableClicks = () => {
       const ticker = row.getAttribute("data-ticker");
       loadFundamentals(ticker);
     });
+  });
+};
+
+const bindFundControls = () => {
+  const btn = document.getElementById("fund-refresh");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const ticker = document.getElementById("fundamental-selected").textContent;
+    if (ticker && ticker !== "-") {
+      loadFundamentals(ticker);
+    }
   });
 };
 
@@ -173,4 +197,5 @@ async function refresh() {
 
 refresh();
 bindTableClicks();
+bindFundControls();
 setInterval(refresh, window.UI_POLL_SECONDS ? window.UI_POLL_SECONDS * 1000 : 1000);

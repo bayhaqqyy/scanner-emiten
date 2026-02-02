@@ -12,7 +12,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 APP_TITLE = "Scanner Emiten: Scalping & Swing"
 LOCAL_TICKERS_CSV = "all.csv"
@@ -370,7 +370,7 @@ def _latest_value(df, keys):
     return None
 
 
-def get_fundamentals(ticker):
+def get_fundamentals(ticker, pe_wajar=None, target_market_cap=None):
     ticker = ticker.upper().replace(".JK", "").strip()
     ticker_jk = f"{ticker}.JK"
     tkr = None
@@ -420,17 +420,25 @@ def get_fundamentals(ticker):
     der = _safe_div(liabilities, equity)
     roe = _safe_div(net_income, equity)
 
+    fair_value_market_cap = None
+    if pe_wajar is not None and net_income is not None:
+        fair_value_market_cap = float(pe_wajar) * float(net_income)
+
+    fair_price_from_target_mc = None
+    if target_market_cap is not None and shares not in (None, 0):
+        fair_price_from_target_mc = float(target_market_cap) / float(shares)
+
     ratios = {
         "market_cap": _format_price(market_cap),
         "pbv": _format_price(pbv),
         "bvps": _format_price(bvps),
         "per": _format_price(per),
         "eps": _format_price(eps),
-        "net_profit_margin": _format_price(npm),
+        "net_profit_margin": _format_price(npm * 100 if npm is not None else None),
         "der": _format_price(der),
         "roe": _format_price(roe),
-        "fair_value": None,
-        "target_market_cap": None,
+        "fair_value_market_cap": _format_price(fair_value_market_cap),
+        "fair_price_target_mc": _format_price(fair_price_from_target_mc),
         "pbv_band": None,
     }
 
@@ -441,6 +449,8 @@ def get_fundamentals(ticker):
         "revenue": _format_price(revenue),
         "equity": _format_price(equity),
         "liabilities": _format_price(liabilities),
+        "pe_wajar": _format_price(pe_wajar) if pe_wajar is not None else None,
+        "target_market_cap": _format_price(target_market_cap) if target_market_cap is not None else None,
     }
 
     return {
@@ -449,7 +459,7 @@ def get_fundamentals(ticker):
         "inputs": inputs,
         "ratios": ratios,
         "source": "yfinance",
-        "note": "Nilai wajar/target market cap/pbv band perlu rumus tambahan.",
+        "note": "Net profit margin dan ROE ditampilkan dalam persen. Nilai wajar dihitung dari PE wajar x laba bersih.",
     }
 
 
@@ -692,7 +702,18 @@ def api_corporate_actions():
 
 @app.route("/api/fundamentals/<ticker>")
 def api_fundamentals(ticker):
-    data = get_fundamentals(ticker)
+    pe_wajar = request.args.get("pe_wajar")
+    target_mc = request.args.get("target_market_cap")
+    try:
+        pe_wajar = float(pe_wajar) if pe_wajar is not None and pe_wajar != "" else None
+    except Exception:
+        pe_wajar = None
+    try:
+        target_mc = float(target_mc) if target_mc is not None and target_mc != "" else None
+    except Exception:
+        target_mc = None
+
+    data = get_fundamentals(ticker, pe_wajar=pe_wajar, target_market_cap=target_mc)
     return jsonify(data)
 
 
