@@ -3,3 +3,4 @@ pandas
 requests
 tabulate
 flask
+beautifulsoup4

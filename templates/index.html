@@ -25,6 +25,8 @@
     <nav class="menu">
       <a href="#scalping">Scalping</a>
       <a href="#swing">Swing</a>
+      <a href="#corporate-action">Corporate Action</a>
+      <a href="#fundamental">Fundamental</a>
       <a href="#rules">Rules</a>
       <a href="#about">About</a>
     </nav>
@@ -82,6 +84,36 @@
         <div class="panel-badge">1d</div>
       </div>
       <div id="swing-table"></div>
+    </section>
+
+    <section id="corporate-action" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Corporate Action News</h2>
+          <div class="panel-meta">Update terakhir: <span id="ca-updated">-</span></div>
+          <div class="panel-error" id="ca-error"></div>
+        </div>
+        <div class="panel-badge">KSEI</div>
+      </div>
+      <div id="ca-table"></div>
+    </section>
+
+    <section id="fundamental" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Fundamental Emiten</h2>
+          <div class="panel-meta">Klik ticker dari tabel untuk melihat detail.</div>
+        </div>
+        <div class="panel-badge">Fundamental</div>
+      </div>
+      <div class="fund-card">
+        <div class="fund-header">
+          <div class="fund-title">Emiten: <span id="fundamental-selected">-</span></div>
+          <div class="panel-meta">As of: <span id="fundamental-asof">-</span></div>
+        </div>
+        <div id="fundamental-body" class="empty">Belum ada emiten yang dipilih.</div>
+        <div id="fundamental-note" class="fund-note"></div>
+      </div>
     </section>
 
     <section id="rules" class="panel panel-slim">

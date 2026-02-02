@@ -1,13 +1,17 @@
 import io
+import json
 import os
+import re
 import threading
 import time
 from datetime import datetime
+from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 import yfinance as yf
+from bs4 import BeautifulSoup
 from flask import Flask, jsonify, render_template
 
 APP_TITLE = "Scanner Emiten: Scalping & Swing"
@@ -19,6 +23,11 @@ MAX_TICKERS = int(os.getenv("MAX_TICKERS", "60"))
 SCALPING_SCAN_SECONDS = int(os.getenv("SCALPING_SCAN_SECONDS", "60"))
 SWING_SCAN_SECONDS = int(os.getenv("SWING_SCAN_SECONDS", "300"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
+AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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").strip()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
+AI_COOLDOWN_MINUTES = int(os.getenv("AI_COOLDOWN_MINUTES", "20"))
+AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 
 # Scalping rules (1m data)
 SCALP_EMA_FAST = int(os.getenv("SCALP_EMA_FAST", "9"))
@@ -45,11 +54,20 @@ SWING_R_MULT = float(os.getenv("SWING_R_MULT", "2.0"))
 SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "3"))
 SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "2"))
 
-app = Flask(__name__)
+CA_CACHE_MINUTES = int(os.getenv("CA_CACHE_MINUTES", "15"))
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+)
 
 _lock = threading.Lock()
 _scalping_cache = {"items": [], "updated_at": None, "error": None}
 _swing_cache = {"items": [], "updated_at": None, "error": None}
+_ai_cache = {}
+_ca_cache = {"items": [], "updated_at": None, "error": None, "at": None}
 
 _LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "Asia/Jakarta"))
 
@@ -123,6 +141,316 @@ def _score_conditions(conditions):
     score = sum(1 for _, ok in conditions if ok)
     reasons = [label for label, ok in conditions if ok]
     return score, reasons
+
+
+def _ai_cache_key(kind, ticker):
+    return f"{kind}:{ticker}"
+
+
+def _ai_allowed():
+    return AI_ENABLED and bool(OPENROUTER_API_KEY)
+
+
+def _ai_recent(entry):
+    if not entry:
+        return False
+    age = datetime.now(_LOCAL_TZ) - entry["at"]
+    return age.total_seconds() < AI_COOLDOWN_MINUTES * 60
+
+
+def _ai_prompt(item, kind):
+    return (
+        "You are a trading assistant. Provide a short, structured analysis in JSON only. "
+        "Fields: bias (bullish|neutral|bearish), setup, risk, confidence (1-10), notes. "
+        "Keep it concise and grounded in the numbers.\n\n"
+        f"Context: {kind} signal on IDX.\n"
+        f"Ticker: {item['ticker']}\n"
+        f"Close: {item['close']}\n"
+        f"Change%: {item['change_pct']}\n"
+        f"RSI: {item['rsi']}\n"
+        f"Vol spike: {item['vol_spike']}\n"
+        f"Entry: {item['entry']}, SL: {item['sl']}, TP: {item['tp']}\n"
+        f"Score: {item['score']}, Reasons: {', '.join(item['reasons'])}\n"
+    )
+
+
+def _ai_analyze(item, kind):
+    if not _ai_allowed():
+        return None
+    cache_key = _ai_cache_key(kind, item["ticker"])
+    cached = _ai_cache.get(cache_key)
+    if _ai_recent(cached):
+        return cached["data"]
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": "Return valid JSON only."},
+            {"role": "user", "content": _ai_prompt(item, kind)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 240,
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        _ai_cache[cache_key] = {"at": datetime.now(_LOCAL_TZ), "data": parsed}
+        return parsed
+    except Exception:
+        return None
+
+
+def _attach_ai(items, kind):
+    if not _ai_allowed():
+        return items
+    count = 0
+    for item in items:
+        if item.get("status") != "signal":
+            continue
+        if count >= AI_MAX_ITEMS:
+            break
+        item["ai"] = _ai_analyze(item, kind)
+        count += 1
+    return items
+
+
+def _fetch_html(url):
+    response = requests.get(url, timeout=20)
+    response.raise_for_status()
+    return response.text
+
+
+def _normalize_space(text):
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _extract_date(text):
+    if not text:
+        return None
+    match = re.search(r"\d{1,2}\s+[A-Za-z]+?\s+\d{4}", text)
+    return match.group(0) if match else None
+
+
+def _parse_ksei_table(html, base_url, category):
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    if not table:
+        return []
+
+    items = []
+    rows = table.find_all("tr")
+    for row in rows:
+        cells = row.find_all("td")
+        if len(cells) < 2:
+            continue
+        text_cells = [_normalize_space(cell.get_text(" ", strip=True)) for cell in cells]
+        link = row.find("a")
+        href = urljoin(base_url, link.get("href")) if link and link.get("href") else None
+        title = text_cells[1] if len(text_cells) > 1 else text_cells[0]
+        date = text_cells[-1]
+        if not title or title.lower().startswith("perihal"):
+            continue
+        items.append(
+            {
+                "title": title,
+                "date": date,
+                "source": "KSEI Corporate Action",
+                "category": category,
+                "url": href,
+            }
+        )
+    return items
+
+
+def _parse_ksei_today(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+    current_date = None
+
+    for node in soup.find_all(["h2", "h3", "a", "p", "li"]):
+        if node.name in ("h2", "h3"):
+            date_text = _extract_date(node.get_text(" ", strip=True))
+            if date_text:
+                current_date = date_text
+            continue
+
+        if node.name == "a":
+            title = _normalize_space(node.get_text(" ", strip=True))
+            href = node.get("href")
+            if not title:
+                continue
+            items.append(
+                {
+                    "title": title,
+                    "date": current_date,
+                    "source": "KSEI Today's Announcements",
+                    "category": "Announcements",
+                    "url": urljoin(base_url, href) if href else None,
+                }
+            )
+    return items
+
+
+def fetch_corporate_actions():
+    now = datetime.now(_LOCAL_TZ)
+    if _ca_cache["at"] and (now - _ca_cache["at"]).total_seconds() < CA_CACHE_MINUTES * 60:
+        return _ca_cache["items"]
+
+    rights_url = "https://web.ksei.co.id/publications/corporate-action-schedules/rights-distribution"
+    today_url = "https://web.ksei.co.id/todays-announcements?setLocale=id-ID"
+    keywords = [
+        "hmetd",
+        "right issue",
+        "rights issue",
+        "pmhmetd",
+        "pmthmetd",
+        "private placement",
+        "penambahan modal",
+    ]
+
+    items = []
+    try:
+        html = _fetch_html(rights_url)
+        items.extend(_parse_ksei_table(html, rights_url, "Rights Distribution (HMETD)"))
+    except Exception:
+        pass
+
+    try:
+        html = _fetch_html(today_url)
+        today_items = _parse_ksei_today(html, today_url)
+        for item in today_items:
+            title_lc = (item["title"] or "").lower()
+            if any(key in title_lc for key in keywords):
+                items.append(item)
+    except Exception:
+        pass
+
+    for item in items:
+        title_lc = (item["title"] or "").lower()
+        if "private placement" in title_lc or "pmthmetd" in title_lc:
+            item["tag"] = "Private Placement"
+        elif "right issue" in title_lc or "rights issue" in title_lc or "hmetd" in title_lc:
+            item["tag"] = "Right Issue"
+        elif "penambahan modal" in title_lc:
+            item["tag"] = "Penambahan Modal"
+        else:
+            item["tag"] = "Corporate Action"
+
+    _ca_cache["items"] = items[:30]
+    _ca_cache["updated_at"] = _now_iso()
+    _ca_cache["at"] = now
+    _ca_cache["error"] = None
+    return _ca_cache["items"]
+
+
+def _safe_div(numerator, denominator):
+    if numerator is None or denominator in (None, 0):
+        return None
+    try:
+        return float(numerator) / float(denominator)
+    except Exception:
+        return None
+
+
+def _latest_value(df, keys):
+    if df is None or df.empty:
+        return None
+    for key in keys:
+        if key in df.index:
+            value = df.loc[key].iloc[0]
+            return float(value) if value is not None else None
+    return None
+
+
+def get_fundamentals(ticker):
+    ticker = ticker.upper().replace(".JK", "").strip()
+    ticker_jk = f"{ticker}.JK"
+    tkr = None
+    info = {}
+    try:
+        tkr = yf.Ticker(ticker_jk)
+        info = tkr.info or {}
+    except Exception:
+        info = {}
+
+    price = info.get("currentPrice") or info.get("regularMarketPrice")
+    shares = info.get("sharesOutstanding")
+    market_cap = info.get("marketCap") or (_safe_div(price * shares, 1) if price and shares else None)
+
+    fin = None
+    bal = None
+    try:
+        if tkr is None:
+            tkr = yf.Ticker(ticker_jk)
+        fin = tkr.financials
+        bal = tkr.balance_sheet
+    except Exception:
+        fin = None
+        bal = None
+
+    net_income = _latest_value(
+        fin,
+        ["Net Income", "Net Income Common Stockholders", "Net Income Applicable To Common Shares"],
+    )
+    revenue = _latest_value(fin, ["Total Revenue", "Total Revenue"])
+    equity = _latest_value(
+        bal,
+        ["Total Stockholder Equity", "Total Equity Gross Minority Interest", "Total Equity"],
+    )
+    liabilities = _latest_value(
+        bal,
+        ["Total Liab", "Total Liabilities Net Minority Interest", "Total Liabilities"],
+    )
+
+    book_value_per_share = info.get("bookValue") or _safe_div(equity, shares)
+    eps = info.get("trailingEps") or _safe_div(net_income, shares)
+
+    pbv = _safe_div(price, book_value_per_share)
+    per = _safe_div(price, eps)
+    bvps = book_value_per_share
+    npm = _safe_div(net_income, revenue)
+    der = _safe_div(liabilities, equity)
+    roe = _safe_div(net_income, equity)
+
+    ratios = {
+        "market_cap": _format_price(market_cap),
+        "pbv": _format_price(pbv),
+        "bvps": _format_price(bvps),
+        "per": _format_price(per),
+        "eps": _format_price(eps),
+        "net_profit_margin": _format_price(npm),
+        "der": _format_price(der),
+        "roe": _format_price(roe),
+        "fair_value": None,
+        "target_market_cap": None,
+        "pbv_band": None,
+    }
+
+    inputs = {
+        "price": _format_price(price),
+        "shares_outstanding": shares,
+        "net_income": _format_price(net_income),
+        "revenue": _format_price(revenue),
+        "equity": _format_price(equity),
+        "liabilities": _format_price(liabilities),
+    }
+
+    return {
+        "ticker": ticker,
+        "as_of": _now_iso(),
+        "inputs": inputs,
+        "ratios": ratios,
+        "source": "yfinance",
+        "note": "Nilai wajar/target market cap/pbv band perlu rumus tambahan.",
+    }
 
 
 def scan_scalping():
@@ -295,6 +623,7 @@ def _scalping_worker():
     while True:
         try:
             items = scan_scalping()
+            items = _attach_ai(items, "scalping")
             with _lock:
                 _scalping_cache["items"] = items
                 _scalping_cache["updated_at"] = _now_iso()
@@ -309,6 +638,7 @@ def _swing_worker():
     while True:
         try:
             items = scan_swing()
+            items = _attach_ai(items, "swing")
             with _lock:
                 _swing_cache["items"] = items
                 _swing_cache["updated_at"] = _now_iso()
@@ -348,6 +678,22 @@ def api_swing():
     with _lock:
         payload = dict(_swing_cache)
     return jsonify(payload)
+
+
+@app.route("/api/corporate-actions")
+def api_corporate_actions():
+    try:
+        items = fetch_corporate_actions()
+        payload = {"items": items, "updated_at": _ca_cache["updated_at"], "error": None}
+    except Exception as exc:
+        payload = {"items": [], "updated_at": _ca_cache["updated_at"], "error": str(exc)}
+    return jsonify(payload)
+
+
+@app.route("/api/fundamentals/<ticker>")
+def api_fundamentals(ticker):
+    data = get_fundamentals(ticker)
+    return jsonify(data)
 
 
 @app.route("/api/health")
