@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-grid"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-title">{{ title }}</div>
+        <div class="brand-sub">Scalping dan swing scanner, update otomatis</div>
+      </div>
+    </div>
+    <nav class="menu">
+      <a href="#scalping">Scalping</a>
+      <a href="#swing">Swing</a>
+      <a href="#rules">Rules</a>
+      <a href="#about">About</a>
+    </nav>
+    <div class="chip">
+      Refresh UI: {{ ui_poll }}s
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>Premium Market Scanner</h1>
+        <p>Filter intraday dan swing dengan rule yang disederhanakan agar sinyal lebih sering muncul. Data diambil dari yfinance.</p>
+        <div class="hero-meta">
+          Universe max {{ max_tickers }} emiten.
+          Aktualisasi waktu mengikuti lokal timezone.
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-card-title">Signal Engine</div>
+        <div class="hero-card-row">
+          <span>Scalping</span>
+          <span>1m</span>
+        </div>
+        <div class="hero-card-row">
+          <span>Swing</span>
+          <span>1d</span>
+        </div>
+        <div class="hero-card-row">
+          <span>Output</span>
+          <span>Entry / SL / TP</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="scalping" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Scalping Signals</h2>
+          <div class="panel-meta">Update terakhir: <span id="scalping-updated">-</span></div>
+          <div class="panel-error" id="scalping-error"></div>
+        </div>
+        <div class="panel-badge">1m</div>
+      </div>
+      <div id="scalping-table"></div>
+    </section>
+
+    <section id="swing" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Swing Signals</h2>
+          <div class="panel-meta">Update terakhir: <span id="swing-updated">-</span></div>
+          <div class="panel-error" id="swing-error"></div>
+        </div>
+        <div class="panel-badge">1d</div>
+      </div>
+      <div id="swing-table"></div>
+    </section>
+
+    <section id="rules" class="panel panel-slim">
+      <h2>Rule Ringkas</h2>
+      <div class="rule-grid">
+        <div>
+          <h3>Scalping</h3>
+          <ul>
+            <li>Harga di atas VWAP</li>
+            <li>EMA9 di atas EMA21</li>
+            <li>RSI 45 sampai 75</li>
+            <li>Volume spike >= 1.1x</li>
+            <li>Momentum 3 bar naik</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Swing</h3>
+          <ul>
+            <li>Harga di atas EMA20</li>
+            <li>EMA20 di atas EMA50</li>
+            <li>RSI 40 sampai 70</li>
+            <li>Volume spike >= 1.0x</li>
+            <li>Momentum 3 hari naik</li>
+          </ul>
+        </div>
+      </div>
+      <div class="rule-note">Sinyal ditentukan dengan sistem skor. Jika belum ada signal penuh, daftar watchlist tetap ditampilkan.</div>
+    </section>
+  </main>
+
+  <footer id="about" class="footer">
+    <div>Scanner dibuat untuk riset teknikal, bukan rekomendasi investasi.</div>
+    <div>Powered by Flask + yfinance.</div>
+  </footer>
+
+  <script>
+    window.UI_POLL_SECONDS = {{ ui_poll }};
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -2,13 +2,13 @@ import io
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 import yfinance as yf
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template
 
 APP_TITLE = "Scanner Emiten: Scalping & Swing"
 LOCAL_TICKERS_CSV = "all.csv"
@@ -24,22 +24,26 @@ UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 SCALP_EMA_FAST = int(os.getenv("SCALP_EMA_FAST", "9"))
 SCALP_EMA_SLOW = int(os.getenv("SCALP_EMA_SLOW", "21"))
 SCALP_RSI_LEN = int(os.getenv("SCALP_RSI_LEN", "14"))
-SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "50"))
-SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "70"))
-SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.5"))
+SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "45"))
+SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "75"))
+SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.1"))
 SCALP_ATR_LEN = int(os.getenv("SCALP_ATR_LEN", "14"))
 SCALP_R_MULT = float(os.getenv("SCALP_R_MULT", "2.0"))
+SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "3"))
+SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "2"))
 
 # Swing rules (1d data)
 SWING_EMA_FAST = int(os.getenv("SWING_EMA_FAST", "20"))
 SWING_EMA_SLOW = int(os.getenv("SWING_EMA_SLOW", "50"))
 SWING_RSI_LEN = int(os.getenv("SWING_RSI_LEN", "14"))
-SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "45"))
-SWING_RSI_MAX = float(os.getenv("SWING_RSI_MAX", "65"))
-SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.2"))
+SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "40"))
+SWING_RSI_MAX = float(os.getenv("SWING_RSI_MAX", "70"))
+SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.0"))
 SWING_ATR_LEN = int(os.getenv("SWING_ATR_LEN", "14"))
 SWING_SL_ATR = float(os.getenv("SWING_SL_ATR", "1.5"))
 SWING_R_MULT = float(os.getenv("SWING_R_MULT", "2.0"))
+SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "3"))
+SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "2"))
 
 app = Flask(__name__)
 
@@ -115,8 +119,15 @@ def _trade_plan(entry, atr_value, sl_atr, r_mult):
     return _format_price(entry), _format_price(sl), _format_price(tp), _format_price(risk)
 
 
+def _score_conditions(conditions):
+    score = sum(1 for _, ok in conditions if ok)
+    reasons = [label for label, ok in conditions if ok]
+    return score, reasons
+
+
 def scan_scalping():
-    results = []
+    signals = []
+    candidates = []
     tickers = load_tickers()
 
     for symbol in tickers:
@@ -150,42 +161,57 @@ def scan_scalping():
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
             atr_val = atr(high_s, low_s, close_s, SCALP_ATR_LEN).iloc[-1]
 
-            if (
-                last_close > vwap_val
-                and ema_fast > ema_slow
-                and SCALP_RSI_MIN <= rsi_val <= SCALP_RSI_MAX
-                and vol_spike >= SCALP_VOL_SPIKE
-            ):
+            momentum_3 = close_s.iloc[-1] > close_s.iloc[-2] > close_s.iloc[-3]
+            conditions = [
+                ("price_above_vwap", last_close > vwap_val),
+                ("ema_trend", ema_fast > ema_slow),
+                ("rsi_ok", SCALP_RSI_MIN <= rsi_val <= SCALP_RSI_MAX),
+                ("vol_spike", vol_spike >= SCALP_VOL_SPIKE),
+                ("momentum_3", momentum_3),
+                ("green_bar", change >= 0),
+            ]
+            score, reasons = _score_conditions(conditions)
+
+            if score >= SCALP_WATCH_SCORE:
                 entry, sl, tp, risk = _trade_plan(
                     last_close, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
                 )
-                results.append(
-                    {
-                        "ticker": symbol,
-                        "close": _format_price(last_close),
-                        "change_pct": round(change, 2),
-                        "vwap_diff_pct": round(vwap_diff, 2),
-                        "ema_fast": _format_price(ema_fast),
-                        "ema_slow": _format_price(ema_slow),
-                        "rsi": round(float(rsi_val), 2),
-                        "vol_spike": round(float(vol_spike), 2),
-                        "entry": entry,
-                        "sl": sl,
-                        "tp": tp,
-                        "risk": risk,
-                    }
-                )
+                item = {
+                    "ticker": symbol,
+                    "close": _format_price(last_close),
+                    "change_pct": round(change, 2),
+                    "vwap_diff_pct": round(vwap_diff, 2),
+                    "ema_fast": _format_price(ema_fast),
+                    "ema_slow": _format_price(ema_slow),
+                    "rsi": round(float(rsi_val), 2),
+                    "vol_spike": round(float(vol_spike), 2),
+                    "entry": entry,
+                    "sl": sl,
+                    "tp": tp,
+                    "risk": risk,
+                    "score": score,
+                    "reasons": reasons,
+                    "status": "signal" if score >= SCALP_MIN_SCORE else "watch",
+                }
+                candidates.append(item)
+                if score >= SCALP_MIN_SCORE:
+                    signals.append(item)
         except Exception:
             continue
 
         time.sleep(0.05)
 
-    results.sort(key=lambda x: x["vol_spike"], reverse=True)
-    return results[:20]
+    if signals:
+        signals.sort(key=lambda x: (x["score"], x["vol_spike"]), reverse=True)
+        return signals[:20]
+
+    candidates.sort(key=lambda x: (x["score"], x["vol_spike"]), reverse=True)
+    return candidates[:20]
 
 
 def scan_swing():
-    results = []
+    signals = []
+    candidates = []
     tickers = load_tickers()
 
     for symbol in tickers:
@@ -217,37 +243,52 @@ def scan_swing():
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
             atr_val = atr(high_s, low_s, close_s, SWING_ATR_LEN).iloc[-1]
 
-            if (
-                last_close > ema_fast
-                and ema_fast > ema_slow
-                and SWING_RSI_MIN <= rsi_val <= SWING_RSI_MAX
-                and vol_spike >= SWING_VOL_SPIKE
-            ):
+            above_fast = last_close > ema_fast
+            up_3 = close_s.iloc[-1] > close_s.iloc[-2] > close_s.iloc[-3]
+            conditions = [
+                ("above_ema_fast", above_fast),
+                ("ema_trend", ema_fast > ema_slow),
+                ("rsi_ok", SWING_RSI_MIN <= rsi_val <= SWING_RSI_MAX),
+                ("vol_spike", vol_spike >= SWING_VOL_SPIKE),
+                ("momentum_3", up_3),
+                ("green_bar", change >= 0),
+            ]
+            score, reasons = _score_conditions(conditions)
+
+            if score >= SWING_WATCH_SCORE:
                 entry, sl, tp, risk = _trade_plan(
                     last_close, atr_val, sl_atr=SWING_SL_ATR, r_mult=SWING_R_MULT
                 )
-                results.append(
-                    {
-                        "ticker": symbol,
-                        "close": _format_price(last_close),
-                        "change_pct": round(change, 2),
-                        "ema_fast": _format_price(ema_fast),
-                        "ema_slow": _format_price(ema_slow),
-                        "rsi": round(float(rsi_val), 2),
-                        "vol_spike": round(float(vol_spike), 2),
-                        "entry": entry,
-                        "sl": sl,
-                        "tp": tp,
-                        "risk": risk,
-                    }
-                )
+                item = {
+                    "ticker": symbol,
+                    "close": _format_price(last_close),
+                    "change_pct": round(change, 2),
+                    "ema_fast": _format_price(ema_fast),
+                    "ema_slow": _format_price(ema_slow),
+                    "rsi": round(float(rsi_val), 2),
+                    "vol_spike": round(float(vol_spike), 2),
+                    "entry": entry,
+                    "sl": sl,
+                    "tp": tp,
+                    "risk": risk,
+                    "score": score,
+                    "reasons": reasons,
+                    "status": "signal" if score >= SWING_MIN_SCORE else "watch",
+                }
+                candidates.append(item)
+                if score >= SWING_MIN_SCORE:
+                    signals.append(item)
         except Exception:
             continue
 
         time.sleep(0.05)
 
-    results.sort(key=lambda x: x["change_pct"], reverse=True)
-    return results[:20]
+    if signals:
+        signals.sort(key=lambda x: (x["score"], x["change_pct"]), reverse=True)
+        return signals[:20]
+
+    candidates.sort(key=lambda x: (x["score"], x["change_pct"]), reverse=True)
+    return candidates[:20]
 
 
 def _scalping_worker():
@@ -287,194 +328,8 @@ def start_workers():
 
 @app.route("/")
 def index():
-    return render_template_string(
-        """
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0f1d1a;
-      --bg2: #132622;
-      --panel: #f3f1e9;
-      --ink: #142015;
-      --accent: #f99b1d;
-      --muted: #6c7a72;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", sans-serif;
-      color: var(--ink);
-      background: radial-gradient(circle at 20% 20%, #204336 0%, var(--bg) 40%, #0a1412 100%);
-      min-height: 100vh;
-    }
-    header {
-      padding: 28px 6vw 18px;
-      color: #f7f4ea;
-    }
-    h1 {
-      font-family: "Fraunces", serif;
-      font-size: clamp(2rem, 3vw, 3rem);
-      margin: 0 0 8px;
-      letter-spacing: 0.5px;
-    }
-    .sub {
-      color: #c7d1ca;
-      font-size: 0.95rem;
-    }
-    main {
-      padding: 0 6vw 40px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
-    }
-    .panel {
-      background: var(--panel);
-      border-radius: 18px;
-      padding: 18px 18px 14px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-      position: relative;
-      overflow: hidden;
-    }
-    .panel::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, rgba(249,155,29,0.12), rgba(19,38,34,0.0));
-      pointer-events: none;
-    }
-    h2 {
-      margin: 0 0 6px;
-      font-size: 1.2rem;
-    }
-    .meta {
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-bottom: 12px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
-    }
-    th, td {
-      text-align: left;
-      padding: 8px 6px;
-      border-bottom: 1px solid #e2dfd5;
-    }
-    th {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #59645c;
-    }
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: var(--accent);
-      color: #121212;
-      font-weight: 600;
-      font-size: 0.75rem;
-    }
-    .empty {
-      color: var(--muted);
-      font-size: 0.9rem;
-      padding: 12px 0;
-    }
-    footer {
-      color: #c7d1ca;
-      padding: 18px 6vw 30px;
-      font-size: 0.85rem;
-    }
-    @media (max-width: 720px) {
-      table { font-size: 0.8rem; }
-      th, td { padding: 6px 4px; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>{{ title }}</h1>
-    <div class="sub">Auto-refresh UI tiap {{ ui_poll }} detik • Universe: max {{ max_tickers }} emiten</div>
-  </header>
-  <main>
-    <section class="panel">
-      <h2>Scalping Signals <span class="badge">1m</span></h2>
-      <div class="meta">Update terakhir: <span id="scalping-updated">-</span></div>
-      <div id="scalping-table"></div>
-    </section>
-    <section class="panel">
-      <h2>Swing Signals <span class="badge">1d</span></h2>
-      <div class="meta">Update terakhir: <span id="swing-updated">-</span></div>
-      <div id="swing-table"></div>
-    </section>
-  </main>
-  <footer>
-    Rule ringkas: Scalping = harga > VWAP, EMA9 > EMA21, RSI 50-70, volume spike ≥ 1.5x.
-    Swing = harga > EMA20 > EMA50, RSI 45-65, volume spike ≥ 1.2x.
-  </footer>
-  <script>
-    const fmt = (v) => (v === null || v === undefined) ? "-" : v;
-
-    function buildTable(items) {
-      if (!items || items.length === 0) {
-        return '<div class="empty">Belum ada sinyal sesuai rule.</div>';
-      }
-      const header = `
-        <table>
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Close</th>
-              <th>Change%</th>
-              <th>RSI</th>
-              <th>Vol</th>
-              <th>Entry</th>
-              <th>SL</th>
-              <th>TP</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-      const rows = items.map((item) => `
-        <tr>
-          <td>${item.ticker}</td>
-          <td>${fmt(item.close)}</td>
-          <td>${fmt(item.change_pct)}</td>
-          <td>${fmt(item.rsi)}</td>
-          <td>${fmt(item.vol_spike)}</td>
-          <td>${fmt(item.entry)}</td>
-          <td>${fmt(item.sl)}</td>
-          <td>${fmt(item.tp)}</td>
-        </tr>
-      `).join("");
-      return header + rows + "</tbody></table>";
-    }
-
-    async function refresh() {
-      const [scalping, swing] = await Promise.all([
-        fetch("/api/scalping").then(r => r.json()),
-        fetch("/api/swing").then(r => r.json())
-      ]);
-
-      document.getElementById("scalping-updated").textContent = scalping.updated_at || "-";
-      document.getElementById("swing-updated").textContent = swing.updated_at || "-";
-      document.getElementById("scalping-table").innerHTML = buildTable(scalping.items);
-      document.getElementById("swing-table").innerHTML = buildTable(swing.items);
-    }
-
-    refresh();
-    setInterval(refresh, {{ ui_poll }} * 1000);
-  </script>
-</body>
-</html>
-        """,
+    return render_template(
+        "index.html",
         title=APP_TITLE,
         max_tickers=MAX_TICKERS,
         ui_poll=UI_POLL_SECONDS,
