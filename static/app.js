@@ -61,10 +61,11 @@ const buildTable = (items, kind) => {
             <th>Change%</th>
             <th>RSI</th>
             <th>Vol</th>
-            <th>Entry0</th>
-            <th>Chg Entry%</th>
-            <th>Tx Value</th>
             <th>Entry</th>
+            <th>Harga Now</th>
+            <th>P/L%</th>
+            <th>Entry Time</th>
+            <th>Tx Value</th>
             <th>SL</th>
             <th>TP1</th>
             <th>TP2</th>
@@ -88,10 +89,11 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.change_pct, 2)}</td>
         <td>${fmt(item.rsi)}</td>
         <td>${formatNumber(item.vol_spike, 2)}</td>
-        <td>${formatNumber(item.entry_base, 2)}</td>
-        <td>${formatNumber(item.change_from_entry_pct, 2)}</td>
+        <td>${formatNumber(item.entry_plan, 2)}</td>
+        <td>${formatNumber(item.entry_now, 2)}</td>
+        <td>${formatNumber(item.pnl_pct, 2)}</td>
+        <td>${fmt(item.entry_plan_at)}</td>
         <td>${formatCompact(item.tx_value)}</td>
-        <td>${formatNumber(item.entry, 2)}</td>
         <td>${formatNumber(item.sl, 2)}</td>
         <td>${formatNumber(item.tp1, 2)}</td>
         <td>${formatNumber(item.tp2, 2)}</td>
@@ -240,6 +242,16 @@ async function refresh() {
   ]);
 
   document.getElementById("scalping-updated").textContent = scalping.updated_at || "-";
+  if (scalping.stats) {
+    const lossRate = scalping.stats.loss_rate ?? null;
+    const winRate = lossRate !== null ? Math.max(0, 1 - lossRate) : null;
+    document.getElementById("scalping-lossrate").textContent =
+      lossRate === null ? "-" : `${formatNumber(lossRate * 100, 1)}%`;
+    document.getElementById("scalping-winrate").textContent =
+      winRate === null ? "-" : `${formatNumber(winRate * 100, 1)}%`;
+    document.getElementById("scalping-mode").textContent =
+      scalping.stats.tighten ? "Ketat" : "Normal";
+  }
   document.getElementById("swing-updated").textContent = swing.updated_at || "-";
   document.getElementById("scalping-error").textContent = scalping.error || "";
   document.getElementById("swing-error").textContent = swing.error || "";

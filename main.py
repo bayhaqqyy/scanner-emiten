@@ -81,6 +81,17 @@ _swing_cache = {"items": [], "updated_at": None, "error": None}
 _ai_cache = {}
 _ca_cache = {"items": [], "updated_at": None, "error": None, "at": None}
 _scalp_call_base = {}
+_scalp_day = None
+_scalp_active = {}
+_scalp_feedback = {"outcomes": [], "loss_rate": 0.0, "tighten": False}
+_scalp_ai_bust = False
+SCALP_ACTIVE_LIMIT = int(os.getenv("SCALP_ACTIVE_LIMIT", "10"))
+SCALP_RESET_HOUR = int(os.getenv("SCALP_RESET_HOUR", "8"))
+SCALP_FEEDBACK_WINDOW = int(os.getenv("SCALP_FEEDBACK_WINDOW", "20"))
+SCALP_LOSS_RATE_TIGHTEN = float(os.getenv("SCALP_LOSS_RATE_TIGHTEN", "0.6"))
+SCALP_TIGHTEN_SCORE = int(os.getenv("SCALP_TIGHTEN_SCORE", "1"))
+SCALP_TIGHTEN_VOL = float(os.getenv("SCALP_TIGHTEN_VOL", "0.1"))
+SCALP_TIGHTEN_TX = float(os.getenv("SCALP_TIGHTEN_TX", "1000000000"))
 
 _LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "Asia/Jakarta"))
 
@@ -88,6 +99,51 @@ _LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "Asia/Jakarta"))
 def _now_iso():
     now = datetime.now(_LOCAL_TZ)
     return now.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _today_key():
+    return datetime.now(_LOCAL_TZ).strftime("%Y-%m-%d")
+
+
+def _reset_scalping_daily():
+    global _scalp_day
+    today = _today_key()
+    now = datetime.now(_LOCAL_TZ)
+    if _scalp_day != today and now.hour >= SCALP_RESET_HOUR:
+        _scalp_day = today
+        _scalp_call_base.clear()
+        _scalp_active.clear()
+        _scalp_feedback["outcomes"] = []
+        _scalp_feedback["loss_rate"] = 0.0
+        _scalp_feedback["tighten"] = False
+        for key in list(_ai_cache.keys()):
+            if key.startswith("scalping:"):
+                _ai_cache.pop(key, None)
+
+
+def _record_scalp_outcome(result):
+    global _scalp_ai_bust
+    outcomes = _scalp_feedback["outcomes"]
+    outcomes.append(result)
+    if len(outcomes) > SCALP_FEEDBACK_WINDOW:
+        outcomes.pop(0)
+    losses = sum(1 for o in outcomes if o == "sl")
+    _scalp_feedback["loss_rate"] = losses / len(outcomes) if outcomes else 0.0
+    tighten = _scalp_feedback["loss_rate"] >= SCALP_LOSS_RATE_TIGHTEN
+    if tighten and not _scalp_feedback["tighten"]:
+        _scalp_ai_bust = True
+    _scalp_feedback["tighten"] = tighten
+
+
+def _scalp_thresholds():
+    if not _scalp_feedback["tighten"]:
+        return SCALP_MIN_SCORE, SCALP_WATCH_SCORE, SCALP_VOL_SPIKE, SCALP_TX_VALUE_MIN
+    return (
+        SCALP_MIN_SCORE + SCALP_TIGHTEN_SCORE,
+        SCALP_WATCH_SCORE + SCALP_TIGHTEN_SCORE,
+        SCALP_VOL_SPIKE + SCALP_TIGHTEN_VOL,
+        SCALP_TX_VALUE_MIN + SCALP_TIGHTEN_TX,
+    )
 
 
 def load_tickers():
@@ -269,9 +325,20 @@ def _attach_ai(items, kind):
     if not _ai_allowed():
         return items
     count = 0
+    global _scalp_ai_bust
+    if kind == "scalping" and _scalp_ai_bust:
+        for key in list(_ai_cache.keys()):
+            if key.startswith("scalping:"):
+                _ai_cache.pop(key, None)
+        _scalp_ai_bust = False
     for item in items:
         if count >= AI_MAX_ITEMS:
             break
+        if item.get("status") == "watch":
+            pnl = item.get("pnl_pct")
+            if pnl is not None and pnl <= 0:
+                cache_key = _ai_cache_key(kind, item.get("ticker", "unknown"))
+                _ai_cache.pop(cache_key, None)
         item["ai"] = _ai_analyze(item, kind)
         count += 1
     return items
@@ -551,8 +618,14 @@ def scan_scalping():
     signals = []
     candidates = []
     tickers = load_tickers()
+    _reset_scalping_daily()
+    active_keys = list(_scalp_active.keys())
+    active_mode = len(active_keys) >= SCALP_ACTIVE_LIMIT
+    min_score, watch_score, vol_spike_min, tx_value_min = _scalp_thresholds()
 
-    for symbol in tickers:
+    scan_list = active_keys if active_mode else tickers
+
+    for symbol in scan_list:
         ticker_jk = f"{symbol}.JK"
         try:
             df = yf.download(
@@ -607,19 +680,48 @@ def scan_scalping():
             momentum_2 = solid_green(-1) and solid_green(-2)
 
             conditions = [
-                ("tx_value_min", tx_value >= SCALP_TX_VALUE_MIN),
+                ("tx_value_min", tx_value >= tx_value_min),
                 ("price_above_vwap", last_close > vwap_val),
                 ("vwap_rising", vwap_rising),
                 ("ema_trend", ema_fast > ema_slow),
                 ("ema_widening", ema_widening),
                 ("rsi_ok", SCALP_RSI_MIN <= rsi_val <= SCALP_RSI_MAX),
-                ("vol_spike", vol_spike >= SCALP_VOL_SPIKE),
+                ("vol_spike", vol_spike >= vol_spike_min),
                 ("break_high_minor", break_high),
                 ("momentum_2_green", momentum_2),
             ]
             score, reasons = _score_conditions(conditions)
 
-            if score >= SCALP_WATCH_SCORE:
+            if symbol in _scalp_active:
+                item = _scalp_active[symbol]
+                item["close"] = _format_price(last_close)
+                item["change_pct"] = round(change, 2)
+                item["rsi"] = round(float(rsi_val), 2)
+                item["vol_spike"] = round(float(vol_spike), 2)
+                item["tx_value"] = _format_price(tx_value)
+                item["entry_now"] = _format_price(last_close)
+                entry_plan = item.get("entry_plan")
+                item["pnl_pct"] = _format_price(
+                    ((last_close - entry_plan) / entry_plan) * 100 if entry_plan else None
+                )
+                if entry_plan:
+                    item["tp1"] = _format_price(entry_plan * 1.03)
+                    item["tp2"] = _format_price(entry_plan * 1.05)
+                    item["tp3"] = _format_price(entry_plan * 1.10)
+                # close position if TP1 or SL hit
+                if item.get("tp1") and last_close >= item["tp1"]:
+                    _record_scalp_outcome("tp1")
+                    _scalp_active.pop(symbol, None)
+                    _scalp_call_base.pop(symbol, None)
+                    continue
+                if item.get("sl") and last_close <= item["sl"]:
+                    _record_scalp_outcome("sl")
+                    _scalp_active.pop(symbol, None)
+                    _scalp_call_base.pop(symbol, None)
+                    continue
+                continue
+
+            if not active_mode and score >= watch_score and len(_scalp_active) < SCALP_ACTIVE_LIMIT:
                 entry, sl, tp, risk = _trade_plan(
                     last_close, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
                 )
@@ -630,14 +732,12 @@ def scan_scalping():
                         "at": _now_iso(),
                     }
                 call_base = _scalp_call_base[call_key]
-                entry_base = call_base["entry_price"]
-                change_from_entry = (
-                    ((last_close - entry_base) / entry_base) * 100 if entry_base else None
-                )
+                entry_plan = call_base["entry_price"]
+                pnl_pct = ((last_close - entry_plan) / entry_plan) * 100 if entry_plan else None
 
-                tp1 = _format_price(entry_base * 1.03) if entry_base else None
-                tp2 = _format_price(entry_base * 1.05) if entry_base else None
-                tp3 = _format_price(entry_base * 1.10) if entry_base else None
+                tp1 = _format_price(entry_plan * 1.03) if entry_plan else None
+                tp2 = _format_price(entry_plan * 1.05) if entry_plan else None
+                tp3 = _format_price(entry_plan * 1.10) if entry_plan else None
 
                 item = {
                     "ticker": symbol,
@@ -649,9 +749,10 @@ def scan_scalping():
                     "rsi": round(float(rsi_val), 2),
                     "vol_spike": round(float(vol_spike), 2),
                     "tx_value": _format_price(tx_value),
-                    "entry_base": _format_price(entry_base),
-                    "entry_base_at": call_base["at"],
-                    "change_from_entry_pct": _format_price(change_from_entry),
+                    "entry_plan": _format_price(entry_plan),
+                    "entry_plan_at": call_base["at"],
+                    "pnl_pct": _format_price(pnl_pct),
+                    "entry_now": _format_price(last_close),
                     "entry": entry,
                     "sl": sl,
                     "tp": tp,
@@ -661,22 +762,17 @@ def scan_scalping():
                     "risk": risk,
                     "score": score,
                     "reasons": reasons,
-                    "status": "signal" if score >= SCALP_MIN_SCORE else "watch",
+                    "status": "signal" if score >= min_score else "watch",
                 }
-                candidates.append(item)
-                if score >= SCALP_MIN_SCORE:
-                    signals.append(item)
+                _scalp_active[symbol] = item
         except Exception:
             continue
 
         time.sleep(0.05)
 
-    if signals:
-        signals.sort(key=lambda x: (x["score"], x["vol_spike"]), reverse=True)
-        return signals[:20]
-
-    candidates.sort(key=lambda x: (x["score"], x["vol_spike"]), reverse=True)
-    return candidates[:20]
+    results = list(_scalp_active.values())
+    results.sort(key=lambda x: (x["score"], x.get("vol_spike", 0)), reverse=True)
+    return results[:SCALP_ACTIVE_LIMIT]
 
 
 def scan_swing():
@@ -785,6 +881,11 @@ def _scalping_worker():
             with _lock:
                 _scalping_cache["items"] = items
                 _scalping_cache["updated_at"] = _now_iso()
+                _scalping_cache["stats"] = {
+                    "loss_rate": _scalp_feedback["loss_rate"],
+                    "tighten": _scalp_feedback["tighten"],
+                    "window": len(_scalp_feedback["outcomes"]),
+                }
                 _scalping_cache["error"] = None
         except Exception as exc:
             with _lock:
