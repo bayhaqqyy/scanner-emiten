@@ -45,33 +45,6 @@ const aiReport = (ai) => {
     : "-";
 };
 
-const reasonLabels = {
-  tx_value_min: "Nilai transaksi >= 5B",
-  price_above_vwap: "Harga > VWAP",
-  vwap_rising: "VWAP naik",
-  ema_trend: "EMA fast > EMA slow",
-  ema_widening: "Gap EMA melebar",
-  rsi_ok: "RSI sesuai",
-  vol_spike: "Volume spike",
-  break_high_minor: "Break high minor",
-  momentum_2_green: "2 candle green solid",
-  above_ema_fast: "Harga > EMA20",
-  ema_slope_up: "EMA20 slope naik",
-  break_resistance: "Break resistance",
-  solid_body: "Body solid",
-  no_long_upper: "No long upper shadow",
-};
-
-const renderReasons = (reasons) => {
-  if (!reasons || reasons.length === 0) return "-";
-  return reasons
-    .map((reason) => {
-      const label = reasonLabels[reason] || reason;
-      return `<span class="reason-chip">${label}</span>`;
-    })
-    .join(" ");
-};
-
 const buildTable = (items, kind) => {
   if (!items || items.length === 0) {
     return '<div class="empty">Belum ada sinyal sesuai rule. Coba beberapa saat lagi.</div>';
@@ -98,7 +71,6 @@ const buildTable = (items, kind) => {
             <th>TP3</th>
             <th>AI</th>
             <th>AI Report</th>
-            <th>Reasons</th>
           </tr>
         </thead>
         <tbody>
@@ -122,7 +94,6 @@ const buildTable = (items, kind) => {
         <td>${formatNumber(item.tp3, 2)}</td>
         <td>${aiBadge(item.ai)}</td>
         <td>${aiReport(item.ai)}</td>
-        <td>${renderReasons(item.reasons)}</td>
       </tr>
   `).join("");
   return header + rows + "</tbody></table></div>";

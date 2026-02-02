@@ -188,7 +188,7 @@ def _ai_prompt(item, kind):
             + f"Vol spike: {item['vol_spike']}\n"
             + f"Entry: {item['entry']}, SL: {item['sl']}\n"
             + f"TP1: {item.get('tp1')}, TP2: {item.get('tp2')}, TP3: {item.get('tp3')}\n"
-            + f"Score: {item['score']}, Reasons: {', '.join(item['reasons'])}\n"
+            + f"Score: {item['score']}\n"
         )
     if kind == "corporate_action":
         return (
