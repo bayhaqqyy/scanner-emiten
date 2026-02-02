@@ -3,6 +3,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -46,9 +47,12 @@ _lock = threading.Lock()
 _scalping_cache = {"items": [], "updated_at": None, "error": None}
 _swing_cache = {"items": [], "updated_at": None, "error": None}
 
+_LOCAL_TZ = ZoneInfo(os.getenv("LOCAL_TZ", "Asia/Jakarta"))
+
 
 def _now_iso():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.now(_LOCAL_TZ)
+    return now.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
 def load_tickers():
