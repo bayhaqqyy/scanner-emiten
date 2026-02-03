@@ -473,8 +473,10 @@ def _ai_prompt(item, kind):
             + f"Loss rate: {item.get('loss_rate')}\n"
             + f"Trades: {item.get('trades')}\n"
             + f"Mode: {item.get('mode')}\n"
-            + "Evaluate today's market behavior and suggest adjustments to the screener for tomorrow.\n"
-            + "Return JSON with 'adjustments' object: "
+            + "Evaluate today's market behavior in detail. Provide what worked, what failed, and why.\n"
+            + "Return JSON with fields: summary, market_behavior, what_worked, what_failed, "
+            + "adjustments, action, risk, confidence. "
+            + "For 'adjustments' use object: "
             + "{rsi_min_delta, rsi_max_delta, vol_spike_delta, tx_value_delta, score_delta}.\n"
         )
     if kind == "corporate_action":

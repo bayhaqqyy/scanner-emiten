@@ -4,10 +4,18 @@
     <div>
       <div class="report-kicker">Stock Morning Today, {{ today_label }}</div>
       <h1>Daily Report Saham</h1>
-      <p>Layanan screening untuk scalping, swing, BSJP/BPJS, dan corporate action berbasis data harian dan intraday. Semua output disertai ringkasan AI.</p>
-      <div class="hero-meta">
+      <p>
+        Daily Report Saham adalah dashboard pemindaian emiten IDX yang merangkum sinyal intraday,
+        peluang swing, serta corporate action yang berdampak pada pergerakan harga.
+        Sistem ini memadukan indikator teknikal (VWAP, EMA, RSI, volume, breakout)
+        dengan rangkuman AI agar kamu cepat menangkap konteks tanpa membaca banyak sumber.
+      </p>
+      <p class="hero-meta">
         Gunakan menu di atas untuk membuka halaman khusus setiap strategi.
-      </div>
+        Di halaman Scalping kamu akan melihat entry plan, harga sekarang, P/L%, dan TP bertingkat.
+        Di halaman Swing kamu mendapat watchlist trend continuation.
+        Halaman Corporate berisi highlight berita dengan ringkasan AI.
+      </p>
     </div>
     <div class="hero-card report-card">
       <div class="hero-card-title">Apa yang Kamu Dapatkan</div>
@@ -33,8 +41,14 @@
   <section class="panel panel-slim">
     <h2>Tentang Aplikasi</h2>
     <p class="hero-meta">
-      Aplikasi ini memindai emiten IDX berdasarkan aturan teknikal dan likuiditas.
-      Hasilnya disajikan dalam format report agar mudah dipakai sebagai panduan harian.
+      Aplikasi ini dibuat untuk membantu riset teknikal harian: memilih emiten dengan likuiditas tinggi,
+      membaca momentum jangka pendek, dan mengamati reaksi pasar terhadap aksi korporasi.
+      Seluruh data diproses otomatis dan ditampilkan dalam format report agar kamu bisa
+      menentukan prioritas riset tanpa kehilangan konteks.
+    </p>
+    <p class="hero-meta">
+      Perlu dicatat, semua output adalah informasi edukasi, bukan ajakan beli/jual.
+      Selalu gunakan manajemen risiko dan verifikasi tambahan sebelum mengambil keputusan.
     </p>
   </section>
 {% endblock %}

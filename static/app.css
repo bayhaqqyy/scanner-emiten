@@ -56,12 +56,13 @@ body {
   position: sticky;
   top: 0;
   z-index: 4;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
   padding: 18px 6vw;
   background: var(--bg-2);
   border-bottom: 1px solid var(--line);
+  gap: 16px;
 }
 
 .brand {
@@ -91,7 +92,9 @@ body {
 
 .menu {
   display: flex;
-  gap: 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .menu a {
@@ -100,7 +103,7 @@ body {
   font-weight: 500;
   transition: color 0.2s ease;
   position: relative;
-  padding-left: 12px;
+  padding: 4px 10px 4px 16px;
 }
 
 .menu a:hover {
@@ -110,11 +113,17 @@ body {
 .menu a + a::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
+  left: 4px;
+  top: 6px;
+  bottom: 6px;
   width: 1px;
   background: var(--line);
+}
+
+.menu a.active {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent);
 }
 
 .menu a.active {
@@ -131,6 +140,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  white-space: nowrap;
 }
 
 .page {

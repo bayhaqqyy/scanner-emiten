@@ -290,11 +290,17 @@ const buildReview = (review) => {
   const action = review.action || "";
   const risk = review.risk || "";
   const bias = review.bias || "";
+  const market = review.market_behavior || "";
+  const worked = review.what_worked || "";
+  const failed = review.what_failed || "";
   const conf = review.confidence ? `${review.confidence}/10` : "";
   return `
     <div class="review-card">
       <div class="review-title">AI Review ${bias} ${conf}</div>
       <div class="review-text">${summary}</div>
+      <div class="review-text">${market}</div>
+      <div class="review-text">${worked}</div>
+      <div class="review-text">${failed}</div>
       <div class="review-text">${action}</div>
       <div class="review-text">${risk}</div>
     </div>
