@@ -876,7 +876,7 @@ def scan_scalping():
                 period="1d",
                 interval="1m",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
             )
             if df.empty or len(df) < max(SCALP_EMA_SLOW, SCALP_RSI_LEN, SCALP_ATR_LEN) + 5:
                 continue
@@ -951,27 +951,27 @@ def scan_scalping():
 
             if symbol in _scalp_active:
                 item = _scalp_active[symbol]
-                item["close"] = _format_price(last_close)
+                item["close"] = _format_price(price_now)
                 item["change_pct"] = round(change, 2)
                 item["rsi"] = round(float(rsi_val), 2)
                 item["vol_spike"] = round(float(vol_spike), 2)
                 item["tx_value"] = _format_price(tx_value)
-                item["entry_now"] = _format_price(last_close)
+                item["entry_now"] = _format_price(price_now)
                 entry_plan = item.get("entry_plan")
                 item["pnl_pct"] = _format_price(
-                    ((last_close - entry_plan) / entry_plan) * 100 if entry_plan else None
+                    ((price_now - entry_plan) / entry_plan) * 100 if entry_plan else None
                 )
                 if entry_plan:
                     item["tp1"] = _format_price(entry_plan * 1.03)
                     item["tp2"] = _format_price(entry_plan * 1.05)
                     item["tp3"] = _format_price(entry_plan * 1.10)
                 # close position if TP1 or SL hit
-                if item.get("tp1") and last_close >= item["tp1"]:
+                if item.get("tp1") and price_now >= item["tp1"]:
                     _record_scalp_outcome("tp1")
                     _scalp_active.pop(symbol, None)
                     _scalp_call_base.pop(symbol, None)
                     continue
-                if item.get("sl") and last_close <= item["sl"]:
+                if item.get("sl") and price_now <= item["sl"]:
                     _record_scalp_outcome("sl")
                     _scalp_active.pop(symbol, None)
                     _scalp_call_base.pop(symbol, None)
@@ -980,17 +980,17 @@ def scan_scalping():
 
             if not active_mode and score >= watch_score and len(_scalp_active) < SCALP_ACTIVE_LIMIT:
                 entry, sl, tp, risk = _trade_plan(
-                    last_close, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
+                    price_now, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
                 )
                 call_key = symbol
                 if call_key not in _scalp_call_base:
                     _scalp_call_base[call_key] = {
-                        "entry_price": last_close,
+                        "entry_price": price_now,
                         "at": _now_iso(),
                     }
                 call_base = _scalp_call_base[call_key]
                 entry_plan = call_base["entry_price"]
-                pnl_pct = ((last_close - entry_plan) / entry_plan) * 100 if entry_plan else None
+                pnl_pct = ((price_now - entry_plan) / entry_plan) * 100 if entry_plan else None
 
                 tp1 = _format_price(entry_plan * 1.03) if entry_plan else None
                 tp2 = _format_price(entry_plan * 1.05) if entry_plan else None
@@ -998,7 +998,7 @@ def scan_scalping():
 
                 item = {
                     "ticker": symbol,
-                    "close": _format_price(last_close),
+                    "close": _format_price(price_now),
                     "change_pct": round(change, 2),
                     "vwap_diff_pct": round(vwap_diff, 2),
                     "ema_fast": _format_price(ema_fast),
@@ -1009,7 +1009,7 @@ def scan_scalping():
                     "entry_plan": _format_price(entry_plan),
                     "entry_plan_at": call_base["at"],
                     "pnl_pct": _format_price(pnl_pct),
-                    "entry_now": _format_price(last_close),
+                    "entry_now": _format_price(price_now),
                     "entry": entry,
                     "sl": sl,
                     "tp": tp,
@@ -1045,7 +1045,7 @@ def scan_swing():
                 period="6mo",
                 interval="1d",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
             )
             if df.empty or len(df) < max(SWING_EMA_SLOW, SWING_RSI_LEN, SWING_ATR_LEN) + 5:
                 continue
@@ -1143,7 +1143,7 @@ def scan_bpjs():
                 period="5d",
                 interval="1d",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
             )
             if df.empty or len(df) < 2:
                 continue
@@ -1185,7 +1185,7 @@ def scan_bsjp():
                 period="30d",
                 interval="1d",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
             )
             if df.empty or len(df) < 21:
                 continue
@@ -1475,3 +1475,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+            price_now = None
+            try:
+                tkr_fast = yf.Ticker(ticker_jk)
+                fast = getattr(tkr_fast, "fast_info", None)
+                if fast and "last_price" in fast:
+                    price_now = float(fast["last_price"])
+                else:
+                    info = tkr_fast.info or {}
+                    price_now = info.get("currentPrice") or info.get("regularMarketPrice")
+            except Exception:
+                price_now = None
+            price_now = float(price_now) if price_now else last_close
