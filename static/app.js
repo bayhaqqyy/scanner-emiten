@@ -284,6 +284,23 @@ const buildDailyTable = (items) => {
   return header + rows + "</tbody></table></div>";
 };
 
+const buildReview = (review) => {
+  if (!review) return '<div class="empty">Belum ada review sesi.</div>';
+  const summary = review.summary || review.setup || review.notes || "";
+  const action = review.action || "";
+  const risk = review.risk || "";
+  const bias = review.bias || "";
+  const conf = review.confidence ? `${review.confidence}/10` : "";
+  return `
+    <div class="review-card">
+      <div class="review-title">AI Review ${bias} ${conf}</div>
+      <div class="review-text">${summary}</div>
+      <div class="review-text">${action}</div>
+      <div class="review-text">${risk}</div>
+    </div>
+  `;
+};
+
 async function refresh() {
   const [scalping, swing, corporate, bsjp, bpjs] = await Promise.all([
     fetch("/api/scalping").then((r) => r.json()),
@@ -297,8 +314,10 @@ async function refresh() {
     .then((r) => r.json())
     .then((health) => {
       const status = health.market_open ? "Open" : "Closed";
+      const session = health.market_status || "-";
       const now = health.now || "-";
-      document.getElementById("market-status").textContent = `Market: ${status} - ${now}`;
+      document.getElementById("market-status").textContent =
+        `Market: ${status} (${session}) - ${now}`;
     })
     .catch(() => {});
 
@@ -323,6 +342,16 @@ async function refresh() {
   setText("scalping-error", scalping.error || "");
   setText("swing-error", swing.error || "");
   setHtml("scalping-table", buildTable(scalping.items, "scalping"));
+  if (scalping.review) {
+    let reviewHtml = buildReview(scalping.review.text);
+    if (scalping.adjust) {
+      const adj = scalping.adjust;
+      const adjLine = `Auto-Adjust: score ${adj.score}, rsi ${adj.rsi_min}/${adj.rsi_max}, vol ${adj.vol_spike}, tx ${formatCompact(adj.tx_value)}`;
+      reviewHtml += `<div class="review-text">${adjLine}</div>`;
+    }
+    setHtml("scalping-review", reviewHtml);
+    setText("scalping-review-at", scalping.review.at || "-");
+  }
   setHtml("swing-table", buildTable(swing.items, "swing"));
 
   setText("ca-updated", corporate.updated_at || "-");

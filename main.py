@@ -44,33 +44,35 @@ AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 SCALP_EMA_FAST = int(os.getenv("SCALP_EMA_FAST", "9"))
 SCALP_EMA_SLOW = int(os.getenv("SCALP_EMA_SLOW", "21"))
 SCALP_RSI_LEN = int(os.getenv("SCALP_RSI_LEN", "14"))
-SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "50"))
-SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "70"))
-SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.3"))
+SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "55"))
+SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "68"))
+SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.5"))
 SCALP_ATR_LEN = int(os.getenv("SCALP_ATR_LEN", "14"))
 SCALP_R_MULT = float(os.getenv("SCALP_R_MULT", "2.0"))
 SCALP_BREAKOUT_LOOKBACK = int(os.getenv("SCALP_BREAKOUT_LOOKBACK", "5"))
-SCALP_SOLID_BODY_MIN = float(os.getenv("SCALP_SOLID_BODY_MIN", "0.6"))
-SCALP_TX_VALUE_MIN = float(os.getenv("SCALP_TX_VALUE_MIN", "5000000000"))
-SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "7"))
-SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "5"))
+SCALP_SOLID_BODY_MIN = float(os.getenv("SCALP_SOLID_BODY_MIN", "0.65"))
+SCALP_UPPER_SHADOW_MAX = float(os.getenv("SCALP_UPPER_SHADOW_MAX", "0.35"))
+SCALP_TX_VALUE_MIN = float(os.getenv("SCALP_TX_VALUE_MIN", "8000000000"))
+SCALP_HTF_EMA = int(os.getenv("SCALP_HTF_EMA", "20"))
+SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "8"))
+SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "6"))
 
 # Swing rules (1d data)
 SWING_EMA_FAST = int(os.getenv("SWING_EMA_FAST", "20"))
 SWING_EMA_SLOW = int(os.getenv("SWING_EMA_SLOW", "50"))
 SWING_RSI_LEN = int(os.getenv("SWING_RSI_LEN", "14"))
-SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "45"))
+SWING_RSI_MIN = float(os.getenv("SWING_RSI_MIN", "50"))
 SWING_RSI_MAX = float(os.getenv("SWING_RSI_MAX", "65"))
-SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.2"))
+SWING_VOL_SPIKE = float(os.getenv("SWING_VOL_SPIKE", "1.5"))
 SWING_ATR_LEN = int(os.getenv("SWING_ATR_LEN", "14"))
 SWING_SL_ATR = float(os.getenv("SWING_SL_ATR", "1.5"))
 SWING_R_MULT = float(os.getenv("SWING_R_MULT", "2.0"))
 SWING_BREAKOUT_LOOKBACK = int(os.getenv("SWING_BREAKOUT_LOOKBACK", "20"))
-SWING_SOLID_BODY_MIN = float(os.getenv("SWING_SOLID_BODY_MIN", "0.55"))
+SWING_SOLID_BODY_MIN = float(os.getenv("SWING_SOLID_BODY_MIN", "0.6"))
 SWING_UPPER_SHADOW_MAX = float(os.getenv("SWING_UPPER_SHADOW_MAX", "0.4"))
 SWING_EMA_SLOPE_LOOKBACK = int(os.getenv("SWING_EMA_SLOPE_LOOKBACK", "3"))
-SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "6"))
-SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "4"))
+SWING_MIN_SCORE = int(os.getenv("SWING_MIN_SCORE", "7"))
+SWING_WATCH_SCORE = int(os.getenv("SWING_WATCH_SCORE", "5"))
 
 CA_CACHE_MINUTES = int(os.getenv("CA_CACHE_MINUTES", "15"))
 
@@ -93,6 +95,15 @@ _scalp_day = None
 _scalp_active = {}
 _scalp_feedback = {"outcomes": [], "loss_rate": 0.0, "tighten": False}
 _scalp_ai_bust = False
+_scalp_review = {"text": None, "at": None, "session": None}
+_market_last_status = None
+_scalp_adjust = {
+    "rsi_min": 0.0,
+    "rsi_max": 0.0,
+    "vol_spike": 0.0,
+    "tx_value": 0.0,
+    "score": 0,
+}
 SCALP_ACTIVE_LIMIT = int(os.getenv("SCALP_ACTIVE_LIMIT", "10"))
 SCALP_RESET_HOUR = int(os.getenv("SCALP_RESET_HOUR", "8"))
 SCALP_FEEDBACK_WINDOW = int(os.getenv("SCALP_FEEDBACK_WINDOW", "20"))
@@ -133,33 +144,113 @@ def _is_market_open(now=None):
     weekday = now.weekday()  # Mon=0 ... Sun=6
     if weekday >= 5:
         return False
-    open_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    close_hour = 16
-    close_minute = 30 if weekday == 4 else 0  # Friday 16:30
-    close_time = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
-    return open_time <= now <= close_time
+    if weekday == 4:
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=11, minute=30, second=0, microsecond=0)
+        session2_start = now.replace(hour=14, minute=0, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
+    else:
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        session2_start = now.replace(hour=13, minute=30, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
+    return (session1_start <= now <= session1_end) or (session2_start <= now <= session2_end)
+
+
+def _market_status(now=None):
+    now = now or datetime.now(_LOCAL_TZ)
+    weekday = now.weekday()
+    if weekday >= 5:
+        return "Weekend"
+    if weekday == 4:
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=11, minute=30, second=0, microsecond=0)
+        session2_start = now.replace(hour=14, minute=0, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
+    else:
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        session2_start = now.replace(hour=13, minute=30, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
+
+    if session1_start <= now <= session1_end:
+        return "Session 1"
+    if session1_end < now < session2_start:
+        return "Break"
+    if session2_start <= now <= session2_end:
+        return "Session 2"
+    if now < session1_start:
+        return "Pre-Open"
+    return "Closed"
+
+
+def _maybe_session_review():
+    global _market_last_status
+    if not _ai_allowed():
+        return
+    status = _market_status()
+    prev = _market_last_status
+    _market_last_status = status
+    if prev is None:
+        return
+    # Trigger review when a session ends: Open -> Break or Open -> Closed
+    if prev in ("Session 1", "Session 2") and status in ("Break", "Closed"):
+        trades = len(_scalp_feedback["outcomes"])
+        if trades == 0:
+            return
+        loss_rate = _scalp_feedback["loss_rate"]
+        win_rate = max(0.0, 1 - loss_rate)
+        payload = {
+            "session": status,
+            "winrate": f"{win_rate:.2f}",
+            "loss_rate": f"{loss_rate:.2f}",
+            "trades": trades,
+            "mode": "Ketat" if _scalp_feedback["tighten"] else "Normal",
+        }
+        review = _ai_analyze(payload, "session_review", key_override=f"session:{_today_key()}:{status}")
+        if review:
+            _apply_scalp_adjustments(review)
+            _scalp_review["text"] = review
+            _scalp_review["at"] = _now_iso()
+            _scalp_review["session"] = status
 
 
 def _sleep_until_next_open():
     now = datetime.now(_LOCAL_TZ)
     weekday = now.weekday()
     if weekday >= 5:
-        days_ahead = (7 - weekday)  # to next Monday
+        days_ahead = (7 - weekday)
+        next_open = (now + pd.Timedelta(days=days_ahead)).replace(
+            hour=9, minute=0, second=0, microsecond=0
+        )
+        time.sleep(max(60, int((next_open - now).total_seconds())))
+        return
+
+    if weekday == 4:
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=11, minute=30, second=0, microsecond=0)
+        session2_start = now.replace(hour=14, minute=0, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
     else:
-        close_hour = 16
-        close_minute = 30 if weekday == 4 else 0
-        close_time = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
-        if now < close_time:
-            time.sleep(60)
-            return
-        days_ahead = 1
-        if weekday == 4:
-            days_ahead = 3
-    next_open = (now + pd.Timedelta(days=days_ahead)).replace(
-        hour=9, minute=0, second=0, microsecond=0
-    )
-    sleep_seconds = max(60, int((next_open - now).total_seconds()))
-    time.sleep(sleep_seconds)
+        session1_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        session1_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        session2_start = now.replace(hour=13, minute=30, second=0, microsecond=0)
+        session2_end = now.replace(hour=15, minute=49, second=59, microsecond=0)
+
+    if now < session1_start:
+        next_open = session1_start
+    elif session1_end < now < session2_start:
+        next_open = session2_start
+    elif now <= session2_end:
+        time.sleep(60)
+        return
+    else:
+        days_ahead = 1 if weekday < 4 else 3
+        next_open = (now + pd.Timedelta(days=days_ahead)).replace(
+            hour=9, minute=0, second=0, microsecond=0
+        )
+
+    time.sleep(max(60, int((next_open - now).total_seconds())))
 
 
 def _today_key():
@@ -177,6 +268,15 @@ def _reset_scalping_daily():
         _scalp_feedback["outcomes"] = []
         _scalp_feedback["loss_rate"] = 0.0
         _scalp_feedback["tighten"] = False
+        _scalp_adjust.update(
+            {
+                "rsi_min": 0.0,
+                "rsi_max": 0.0,
+                "vol_spike": 0.0,
+                "tx_value": 0.0,
+                "score": 0,
+            }
+        )
         for key in list(_ai_cache.keys()):
             if key.startswith("scalping:"):
                 _ai_cache.pop(key, None)
@@ -198,13 +298,48 @@ def _record_scalp_outcome(result):
 
 def _scalp_thresholds():
     if not _scalp_feedback["tighten"]:
-        return SCALP_MIN_SCORE, SCALP_WATCH_SCORE, SCALP_VOL_SPIKE, SCALP_TX_VALUE_MIN
+        return (
+            SCALP_MIN_SCORE,
+            SCALP_WATCH_SCORE,
+            SCALP_VOL_SPIKE,
+            SCALP_TX_VALUE_MIN,
+            SCALP_RSI_MIN,
+            SCALP_RSI_MAX,
+        )
     return (
         SCALP_MIN_SCORE + SCALP_TIGHTEN_SCORE,
         SCALP_WATCH_SCORE + SCALP_TIGHTEN_SCORE,
         SCALP_VOL_SPIKE + SCALP_TIGHTEN_VOL,
         SCALP_TX_VALUE_MIN + SCALP_TIGHTEN_TX,
+        SCALP_RSI_MIN,
+        SCALP_RSI_MAX,
     )
+
+
+def _apply_scalp_adjustments(review):
+    if not isinstance(review, dict):
+        return
+    adj = review.get("adjustments")
+    if not isinstance(adj, dict):
+        return
+
+    def _num(val, default=0.0):
+        try:
+            return float(val)
+        except Exception:
+            return default
+
+    rsi_min_delta = max(-5.0, min(5.0, _num(adj.get("rsi_min_delta"))))
+    rsi_max_delta = max(-5.0, min(5.0, _num(adj.get("rsi_max_delta"))))
+    vol_spike_delta = max(-0.3, min(0.5, _num(adj.get("vol_spike_delta"))))
+    tx_value_delta = max(-2_000_000_000.0, min(5_000_000_000.0, _num(adj.get("tx_value_delta"))))
+    score_delta = int(max(-2, min(3, _num(adj.get("score_delta")))))
+
+    _scalp_adjust["rsi_min"] = rsi_min_delta
+    _scalp_adjust["rsi_max"] = rsi_max_delta
+    _scalp_adjust["vol_spike"] = vol_spike_delta
+    _scalp_adjust["tx_value"] = tx_value_delta
+    _scalp_adjust["score"] = score_delta
 
 
 def load_tickers():
@@ -250,6 +385,17 @@ def vwap(high, low, close, volume):
     typical_price = (high + low + close) / 3
     pv = typical_price * volume
     return pv.cumsum() / volume.cumsum()
+
+
+def resample_ohlcv(df, rule):
+    o = df["Open"].resample(rule).first()
+    h = df["High"].resample(rule).max()
+    l = df["Low"].resample(rule).min()
+    c = df["Close"].resample(rule).last()
+    v = df["Volume"].resample(rule).sum()
+    out = pd.concat([o, h, l, c, v], axis=1)
+    out.columns = ["Open", "High", "Low", "Close", "Volume"]
+    return out.dropna()
 
 
 def _format_price(value):
@@ -317,6 +463,19 @@ def _ai_prompt(item, kind):
             + f"Volume: {item.get('volume')}\n"
             + f"Value: {item.get('tx_value')}\n"
             + "Explain why it qualifies and whether it looks good for the next session.\n"
+        )
+    if kind == "session_review":
+        return (
+            base
+            + "Context: End of session performance review for scalping.\n"
+            + f"Session: {item.get('session')}\n"
+            + f"Winrate: {item.get('winrate')}\n"
+            + f"Loss rate: {item.get('loss_rate')}\n"
+            + f"Trades: {item.get('trades')}\n"
+            + f"Mode: {item.get('mode')}\n"
+            + "Evaluate today's market behavior and suggest adjustments to the screener for tomorrow.\n"
+            + "Return JSON with 'adjustments' object: "
+            + "{rsi_min_delta, rsi_max_delta, vol_spike_delta, tx_value_delta, score_delta}.\n"
         )
     if kind == "corporate_action":
         return (
@@ -697,7 +856,13 @@ def scan_scalping():
     _reset_scalping_daily()
     active_keys = list(_scalp_active.keys())
     active_mode = len(active_keys) >= SCALP_ACTIVE_LIMIT
-    min_score, watch_score, vol_spike_min, tx_value_min = _scalp_thresholds()
+    min_score, watch_score, vol_spike_min, tx_value_min, rsi_min, rsi_max = _scalp_thresholds()
+    min_score += _scalp_adjust["score"]
+    watch_score += _scalp_adjust["score"]
+    vol_spike_min += _scalp_adjust["vol_spike"]
+    tx_value_min += _scalp_adjust["tx_value"]
+    rsi_min += _scalp_adjust["rsi_min"]
+    rsi_max += _scalp_adjust["rsi_max"]
 
     scan_list = active_keys if active_mode else tickers
 
@@ -712,6 +877,10 @@ def scan_scalping():
                 auto_adjust=True,
             )
             if df.empty or len(df) < max(SCALP_EMA_SLOW, SCALP_RSI_LEN, SCALP_ATR_LEN) + 5:
+                continue
+
+            df_5m = resample_ohlcv(df, "5min")
+            if df_5m.empty or len(df_5m) < SCALP_HTF_EMA + 2:
                 continue
 
             close_s = df["Close"].squeeze()
@@ -754,6 +923,14 @@ def scan_scalping():
                 return close_s.iloc[idx] > open_s.iloc[idx] and (body / rng) >= SCALP_SOLID_BODY_MIN
 
             momentum_2 = solid_green(-1) and solid_green(-2)
+            body = abs(close_s.iloc[-1] - open_s.iloc[-1])
+            rng = high_s.iloc[-1] - low_s.iloc[-1]
+            upper_shadow = high_s.iloc[-1] - max(close_s.iloc[-1], open_s.iloc[-1])
+            upper_shadow_ratio = upper_shadow / rng if rng > 0 else 0
+
+            close_5m = df_5m["Close"]
+            ema_5m = ema(close_5m, SCALP_HTF_EMA)
+            htf_trend = close_5m.iloc[-1] > ema_5m.iloc[-1] and ema_5m.iloc[-1] > ema_5m.iloc[-2]
 
             conditions = [
                 ("tx_value_min", tx_value >= tx_value_min),
@@ -761,10 +938,12 @@ def scan_scalping():
                 ("vwap_rising", vwap_rising),
                 ("ema_trend", ema_fast > ema_slow),
                 ("ema_widening", ema_widening),
-                ("rsi_ok", SCALP_RSI_MIN <= rsi_val <= SCALP_RSI_MAX),
+                ("rsi_ok", rsi_min <= rsi_val <= rsi_max),
                 ("vol_spike", vol_spike >= vol_spike_min),
                 ("break_high_minor", break_high),
                 ("momentum_2_green", momentum_2),
+                ("htf_trend", htf_trend),
+                ("no_long_upper", upper_shadow_ratio <= SCALP_UPPER_SHADOW_MAX),
             ]
             score, reasons = _score_conditions(conditions)
 
@@ -900,6 +1079,7 @@ def scan_swing():
             body_ratio = body / rng if rng > 0 else 0
             upper_shadow = high_s.iloc[-1] - max(close_s.iloc[-1], open_s.iloc[-1])
             upper_shadow_ratio = upper_shadow / rng if rng > 0 else 0
+            close_position = (high_s.iloc[-1] - close_s.iloc[-1]) / rng if rng > 0 else 1
 
             conditions = [
                 ("above_ema_fast", above_fast),
@@ -910,6 +1090,7 @@ def scan_swing():
                 ("break_resistance", break_res),
                 ("solid_body", body_ratio >= SWING_SOLID_BODY_MIN),
                 ("no_long_upper", upper_shadow_ratio <= SWING_UPPER_SHADOW_MAX),
+                ("close_near_high", close_position <= 0.3),
             ]
             score, reasons = _score_conditions(conditions)
 
@@ -1035,6 +1216,7 @@ def scan_bsjp():
 def _scalping_worker():
     while True:
         try:
+            _maybe_session_review()
             if not _is_market_open():
                 _sleep_until_next_open()
                 continue
@@ -1048,6 +1230,8 @@ def _scalping_worker():
                     "tighten": _scalp_feedback["tighten"],
                     "window": len(_scalp_feedback["outcomes"]),
                 }
+                _scalping_cache["review"] = _scalp_review
+                _scalping_cache["adjust"] = dict(_scalp_adjust)
                 _scalping_cache["error"] = None
         except Exception as exc:
             with _lock:
@@ -1272,7 +1456,14 @@ def api_fundamentals(ticker):
 
 @app.route("/api/health")
 def api_health():
-    return jsonify({"status": "ok", "market_open": _is_market_open(), "now": _now_iso()})
+    return jsonify(
+        {
+            "status": "ok",
+            "market_open": _is_market_open(),
+            "market_status": _market_status(),
+            "now": _now_iso(),
+        }
+    )
 
 
 def main():
