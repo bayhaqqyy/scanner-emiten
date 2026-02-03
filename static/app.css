@@ -99,10 +99,27 @@ body {
   text-decoration: none;
   font-weight: 500;
   transition: color 0.2s ease;
+  position: relative;
+  padding-left: 12px;
 }
 
 .menu a:hover {
   color: var(--ink);
+}
+
+.menu a + a::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--line);
+}
+
+.menu a.active {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .chip {

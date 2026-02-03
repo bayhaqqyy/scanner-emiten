@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section id="rules" class="panel panel-slim">
+    <h2>Rule Ringkas</h2>
+    <div class="rule-grid">
+      <div>
+        <h3>Scalping</h3>
+        <ul>
+          <li>Transaksi >= 5B (nilai transaksi)</li>
+          <li>Harga > VWAP dan VWAP naik</li>
+          <li>EMA9 > EMA21 dan gap melebar</li>
+          <li>RSI 50 sampai 70</li>
+          <li>Volume entry >= 1.3x</li>
+          <li>Break high minor</li>
+          <li>2 candle green solid body</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Swing</h3>
+        <ul>
+          <li>Harga > EMA20 & EMA20 > EMA50</li>
+          <li>EMA20 slope naik</li>
+          <li>RSI 45 sampai 65</li>
+          <li>Volume breakout >= 1.2x</li>
+          <li>Break resistance + close kuat</li>
+          <li>Body solid, tanpa upper shadow panjang</li>
+        </ul>
+      </div>
+      <div>
+        <h3>BSJP</h3>
+        <ul>
+          <li>Volume >= 1.5x MA20</li>
+          <li>Value > 10B</li>
+          <li>Return harian > 0.5%</li>
+        </ul>
+      </div>
+      <div>
+        <h3>BPJS</h3>
+        <ul>
+          <li>Close >= Prev Close</li>
+          <li>Close >= Open</li>
+          <li>Value > 2B</li>
+        </ul>
+      </div>
+    </div>
+    <div class="rule-note">Filter spread, suspensi, auto reject, tren IHSG, sektor, dan free float belum terdata di aplikasi.</div>
+  </section>
+{% endblock %}

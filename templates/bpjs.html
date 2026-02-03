@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section id="bpjs" class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>BPJS (Beli Pagi, Jual Sore)</h2>
+        <div class="panel-meta">Update terakhir: <span id="bpjs-updated">-</span></div>
+        <div class="panel-error" id="bpjs-error"></div>
+      </div>
+      <div class="panel-badge">Daily</div>
+    </div>
+    <div id="bpjs-table"></div>
+  </section>
+{% endblock %}

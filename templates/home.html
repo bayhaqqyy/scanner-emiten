@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero report-hero">
+    <div>
+      <div class="report-kicker">Stock Morning Today, {{ today_label }}</div>
+      <h1>Daily Report Saham</h1>
+      <p>Layanan screening untuk scalping, swing, BSJP/BPJS, dan corporate action berbasis data harian dan intraday. Semua output disertai ringkasan AI.</p>
+      <div class="hero-meta">
+        Gunakan menu di atas untuk membuka halaman khusus setiap strategi.
+      </div>
+    </div>
+    <div class="hero-card report-card">
+      <div class="hero-card-title">Apa yang Kamu Dapatkan</div>
+      <div class="hero-card-row">
+        <span>Scalping</span>
+        <span>Entry, SL, TP, P/L</span>
+      </div>
+      <div class="hero-card-row">
+        <span>Swing</span>
+        <span>Watchlist & Trend</span>
+      </div>
+      <div class="hero-card-row">
+        <span>Corporate Action</span>
+        <span>Highlight + AI</span>
+      </div>
+      <div class="hero-card-row">
+        <span>Fundamental</span>
+        <span>Ratio + AI</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel-slim">
+    <h2>Tentang Aplikasi</h2>
+    <p class="hero-meta">
+      Aplikasi ini memindai emiten IDX berdasarkan aturan teknikal dan likuiditas.
+      Hasilnya disajikan dalam format report agar mudah dipakai sebagai panduan harian.
+    </p>
+  </section>
+{% endblock %}

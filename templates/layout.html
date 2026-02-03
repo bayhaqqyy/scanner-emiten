@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-grid"></div>
+
+  <header class="topbar report-header">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-title">{{ title }}</div>
+        <div class="brand-sub">Scalping dan swing scanner, update otomatis</div>
+      </div>
+    </div>
+    <nav class="menu">
+      <a href="/" class="{{ 'active' if current_page == 'home' else '' }}">Home</a>
+      <a href="/scalping" class="{{ 'active' if current_page == 'scalping' else '' }}">Scalping</a>
+      <a href="/swing" class="{{ 'active' if current_page == 'swing' else '' }}">Swing</a>
+      <a href="/bsjp" class="{{ 'active' if current_page == 'bsjp' else '' }}">BSJP</a>
+      <a href="/bpjs" class="{{ 'active' if current_page == 'bpjs' else '' }}">BPJS</a>
+      <a href="/corporate" class="{{ 'active' if current_page == 'corporate' else '' }}">Corporate</a>
+      <a href="/fundamental" class="{{ 'active' if current_page == 'fundamental' else '' }}">Fundamental</a>
+      <a href="/rules" class="{{ 'active' if current_page == 'rules' else '' }}">Rules</a>
+    </nav>
+    <div class="chip">
+      <span id="market-status">Market: -</span> • Refresh UI: {{ ui_poll }}s
+      <button id="theme-toggle" class="theme-toggle" type="button">Tema</button>
+    </div>
+  </header>
+
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div>Scanner dibuat untuk riset teknikal, bukan rekomendasi investasi.</div>
+    <div>Powered by Flask + yfinance.</div>
+  </footer>
+
+  <div id="ai-modal" class="ai-modal">
+    <div class="ai-modal-overlay"></div>
+    <div class="ai-modal-card">
+      <div class="ai-modal-header">
+        <div class="ai-modal-title">AI Report</div>
+        <button class="ai-modal-close" type="button">Tutup</button>
+      </div>
+      <div class="ai-modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    window.UI_POLL_SECONDS = {{ ui_poll }};
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

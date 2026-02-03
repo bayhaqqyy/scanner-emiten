@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section id="fundamental" class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Fundamental Emiten</h2>
+        <div class="panel-meta">Klik ticker dari tabel untuk melihat detail.</div>
+      </div>
+      <div class="panel-badge">Fundamental</div>
+    </div>
+    <div class="fund-controls">
+      <label>
+        PE Wajar
+        <input type="number" step="0.01" id="pe-wajar" placeholder="contoh: 12">
+      </label>
+      <label>
+        Target Market Cap
+        <input type="number" step="0.01" id="target-market-cap" placeholder="contoh: 1500000000000">
+      </label>
+      <button id="fund-refresh">Hitung</button>
+    </div>
+    <div class="fund-card">
+      <div class="fund-header">
+        <div class="fund-title">Emiten: <span id="fundamental-selected">-</span></div>
+        <div class="panel-meta">As of: <span id="fundamental-asof">-</span></div>
+      </div>
+      <div id="fundamental-body" class="empty">Belum ada emiten yang dipilih.</div>
+      <div id="fundamental-note" class="fund-note"></div>
+    </div>
+  </section>
+{% endblock %}

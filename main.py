@@ -1123,11 +1123,82 @@ def start_workers():
 @app.route("/")
 def index():
     return render_template(
-        "index.html",
+        "home.html",
         title=APP_TITLE,
         max_tickers=MAX_TICKERS,
         ui_poll=UI_POLL_SECONDS,
         today_label=_today_label(),
+        current_page="home",
+    )
+
+
+@app.route("/scalping")
+def page_scalping():
+    return render_template(
+        "scalping.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="scalping",
+    )
+
+
+@app.route("/swing")
+def page_swing():
+    return render_template(
+        "swing.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="swing",
+    )
+
+
+@app.route("/bsjp")
+def page_bsjp():
+    return render_template(
+        "bsjp.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="bsjp",
+    )
+
+
+@app.route("/bpjs")
+def page_bpjs():
+    return render_template(
+        "bpjs.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="bpjs",
+    )
+
+
+@app.route("/corporate")
+def page_corporate():
+    return render_template(
+        "corporate.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="corporate",
+    )
+
+
+@app.route("/fundamental")
+def page_fundamental():
+    return render_template(
+        "fundamental.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="fundamental",
+    )
+
+
+@app.route("/rules")
+def page_rules():
+    return render_template(
+        "rules.html",
+        title=APP_TITLE,
+        ui_poll=UI_POLL_SECONDS,
+        current_page="rules",
     )
 
 

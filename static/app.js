@@ -298,38 +298,44 @@ async function refresh() {
     .then((health) => {
       const status = health.market_open ? "Open" : "Closed";
       const now = health.now || "-";
-      document.getElementById("market-status").textContent = `Market: ${status} • ${now}`;
+      document.getElementById("market-status").textContent = `Market: ${status} - ${now}`;
     })
     .catch(() => {});
 
-  document.getElementById("scalping-updated").textContent = scalping.updated_at || "-";
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+  const setHtml = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = value;
+  };
+
+  setText("scalping-updated", scalping.updated_at || "-");
   if (scalping.stats) {
     const lossRate = scalping.stats.loss_rate ?? null;
     const winRate = lossRate !== null ? Math.max(0, 1 - lossRate) : null;
-    document.getElementById("scalping-lossrate").textContent =
-      lossRate === null ? "-" : `${formatNumber(lossRate * 100, 1)}%`;
-    document.getElementById("scalping-winrate").textContent =
-      winRate === null ? "-" : `${formatNumber(winRate * 100, 1)}%`;
-    document.getElementById("scalping-mode").textContent =
-      scalping.stats.tighten ? "Ketat" : "Normal";
+    setText("scalping-lossrate", lossRate === null ? "-" : `${formatNumber(lossRate * 100, 1)}%`);
+    setText("scalping-winrate", winRate === null ? "-" : `${formatNumber(winRate * 100, 1)}%`);
+    setText("scalping-mode", scalping.stats.tighten ? "Ketat" : "Normal");
   }
-  document.getElementById("swing-updated").textContent = swing.updated_at || "-";
-  document.getElementById("scalping-error").textContent = scalping.error || "";
-  document.getElementById("swing-error").textContent = swing.error || "";
-  document.getElementById("scalping-table").innerHTML = buildTable(scalping.items, "scalping");
-  document.getElementById("swing-table").innerHTML = buildTable(swing.items, "swing");
+  setText("swing-updated", swing.updated_at || "-");
+  setText("scalping-error", scalping.error || "");
+  setText("swing-error", swing.error || "");
+  setHtml("scalping-table", buildTable(scalping.items, "scalping"));
+  setHtml("swing-table", buildTable(swing.items, "swing"));
 
-  document.getElementById("ca-updated").textContent = corporate.updated_at || "-";
-  document.getElementById("ca-error").textContent = corporate.error || "";
-  document.getElementById("ca-table").innerHTML = buildCorporateTable(corporate.items);
+  setText("ca-updated", corporate.updated_at || "-");
+  setText("ca-error", corporate.error || "");
+  setHtml("ca-table", buildCorporateTable(corporate.items));
 
-  document.getElementById("bsjp-updated").textContent = bsjp.updated_at || "-";
-  document.getElementById("bsjp-error").textContent = bsjp.error || "";
-  document.getElementById("bsjp-table").innerHTML = buildDailyTable(bsjp.items);
+  setText("bsjp-updated", bsjp.updated_at || "-");
+  setText("bsjp-error", bsjp.error || "");
+  setHtml("bsjp-table", buildDailyTable(bsjp.items));
 
-  document.getElementById("bpjs-updated").textContent = bpjs.updated_at || "-";
-  document.getElementById("bpjs-error").textContent = bpjs.error || "";
-  document.getElementById("bpjs-table").innerHTML = buildDailyTable(bpjs.items);
+  setText("bpjs-updated", bpjs.updated_at || "-");
+  setText("bpjs-error", bpjs.error || "");
+  setHtml("bpjs-table", buildDailyTable(bpjs.items));
 }
 
 refresh();
