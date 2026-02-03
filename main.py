@@ -895,6 +895,19 @@ def scan_scalping():
             prev_close = float(close_s.iloc[-2])
             change = ((last_close - prev_close) / prev_close) * 100
 
+            price_now = None
+            try:
+                tkr_fast = yf.Ticker(ticker_jk)
+                fast = getattr(tkr_fast, "fast_info", None)
+                if fast and "last_price" in fast:
+                    price_now = float(fast["last_price"])
+                else:
+                    info = tkr_fast.info or {}
+                    price_now = info.get("currentPrice") or info.get("regularMarketPrice")
+            except Exception:
+                price_now = None
+            price_now = float(price_now) if price_now else last_close
+
             ema_fast_series = ema(close_s, SCALP_EMA_FAST)
             ema_slow_series = ema(close_s, SCALP_EMA_SLOW)
             ema_fast = ema_fast_series.iloc[-1]
@@ -1475,15 +1488,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-            price_now = None
-            try:
-                tkr_fast = yf.Ticker(ticker_jk)
-                fast = getattr(tkr_fast, "fast_info", None)
-                if fast and "last_price" in fast:
-                    price_now = float(fast["last_price"])
-                else:
-                    info = tkr_fast.info or {}
-                    price_now = info.get("currentPrice") or info.get("regularMarketPrice")
-            except Exception:
-                price_now = None
-            price_now = float(price_now) if price_now else last_close
