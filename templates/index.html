@@ -14,7 +14,7 @@
   <div class="bg-orb orb-2"></div>
   <div class="bg-grid"></div>
 
-  <header class="topbar">
+  <header class="topbar report-header">
     <div class="brand">
       <div class="brand-mark"></div>
       <div>
@@ -33,33 +33,34 @@
       <a href="#about">About</a>
     </nav>
     <div class="chip">
-      Refresh UI: {{ ui_poll }}s
+      <span id="market-status">Market: -</span> • Refresh UI: {{ ui_poll }}s
+      <button id="theme-toggle" class="theme-toggle" type="button">Tema</button>
     </div>
   </header>
 
   <main class="page">
-    <section class="hero">
+    <section class="hero report-hero">
       <div>
-        <h1>Premium Market Scanner</h1>
-        <p>Filter intraday dan swing dengan rule yang disederhanakan agar sinyal lebih sering muncul. Data diambil dari yfinance.</p>
+        <div class="report-kicker">Stock Morning Today, {{ today_label }}</div>
+        <h1>Daily Report Saham</h1>
+        <p>Laporan ringkas berisi Scalping Top List, Swing Watchlist, dan Corporate Action Highlight.</p>
         <div class="hero-meta">
-          Universe max {{ max_tickers }} emiten.
-          Aktualisasi waktu mengikuti lokal timezone.
+          Universe max {{ max_tickers }} emiten. Aktualisasi waktu mengikuti lokal timezone.
         </div>
       </div>
-      <div class="hero-card">
-        <div class="hero-card-title">Signal Engine</div>
+      <div class="hero-card report-card">
+        <div class="hero-card-title">Report Highlights</div>
         <div class="hero-card-row">
           <span>Scalping</span>
-          <span>1m</span>
+          <span>Top List</span>
         </div>
         <div class="hero-card-row">
           <span>Swing</span>
-          <span>1d</span>
+          <span>Watchlist</span>
         </div>
         <div class="hero-card-row">
-          <span>Output</span>
-          <span>Entry / SL / TP</span>
+          <span>Corporate Action</span>
+          <span>Highlights</span>
         </div>
       </div>
     </section>
@@ -67,7 +68,7 @@
     <section id="scalping" class="panel">
       <div class="panel-head">
         <div>
-          <h2>Scalping Signals</h2>
+          <h2>Scalping Top List</h2>
           <div class="panel-meta">
             Update terakhir: <span id="scalping-updated">-</span>
             <span class="panel-meta-divider">•</span>
@@ -87,7 +88,7 @@
     <section id="swing" class="panel">
       <div class="panel-head">
         <div>
-          <h2>Swing Signals</h2>
+          <h2>Swing Watchlist</h2>
           <div class="panel-meta">Update terakhir: <span id="swing-updated">-</span></div>
           <div class="panel-error" id="swing-error"></div>
         </div>
@@ -120,10 +121,10 @@
       <div id="bpjs-table"></div>
     </section>
 
-    <section id="corporate-action" class="panel">
+    <section id="corporate-action" class="panel report-ca">
       <div class="panel-head">
         <div>
-          <h2>Corporate Action News</h2>
+          <h2>Corporate Action Highlight</h2>
           <div class="panel-meta">Update terakhir: <span id="ca-updated">-</span></div>
           <div class="panel-error" id="ca-error"></div>
         </div>

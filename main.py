@@ -109,6 +109,59 @@ def _now_iso():
     return now.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
+def _today_label():
+    now = datetime.now(_LOCAL_TZ)
+    months = [
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
+        "Mei",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
+    ]
+    return f"{now.day:02d} {months[now.month - 1]} {now.year}"
+
+
+def _is_market_open(now=None):
+    now = now or datetime.now(_LOCAL_TZ)
+    weekday = now.weekday()  # Mon=0 ... Sun=6
+    if weekday >= 5:
+        return False
+    open_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    close_hour = 16
+    close_minute = 30 if weekday == 4 else 0  # Friday 16:30
+    close_time = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+    return open_time <= now <= close_time
+
+
+def _sleep_until_next_open():
+    now = datetime.now(_LOCAL_TZ)
+    weekday = now.weekday()
+    if weekday >= 5:
+        days_ahead = (7 - weekday)  # to next Monday
+    else:
+        close_hour = 16
+        close_minute = 30 if weekday == 4 else 0
+        close_time = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+        if now < close_time:
+            time.sleep(60)
+            return
+        days_ahead = 1
+        if weekday == 4:
+            days_ahead = 3
+    next_open = (now + pd.Timedelta(days=days_ahead)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    sleep_seconds = max(60, int((next_open - now).total_seconds()))
+    time.sleep(sleep_seconds)
+
+
 def _today_key():
     return datetime.now(_LOCAL_TZ).strftime("%Y-%m-%d")
 
@@ -411,18 +464,20 @@ def _parse_ksei_table(html, base_url, category):
     return items
 
 
-def _extract_article_text(url):
+def _extract_article_data(url):
     try:
         html = _fetch_html(url)
     except Exception:
-        return None
+        return {"content": None, "image": None}
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
+    og_image = soup.find("meta", property="og:image")
+    image_url = og_image.get("content") if og_image else None
     text = _normalize_space(soup.get_text(" ", strip=True))
     if not text:
-        return None
-    return text[:2000]
+        return {"content": None, "image": image_url}
+    return {"content": text[:2000], "image": image_url}
 
 
 def _parse_ksei_today(html, base_url):
@@ -499,7 +554,9 @@ def fetch_corporate_actions():
         else:
             item["tag"] = "Corporate Action"
         if item.get("url"):
-            item["content"] = _extract_article_text(item["url"])
+            article = _extract_article_data(item["url"])
+            item["content"] = article.get("content")
+            item["image"] = article.get("image")
 
     _ca_cache["items"] = items[:30]
     _ca_cache["updated_at"] = _now_iso()
@@ -978,6 +1035,9 @@ def scan_bsjp():
 def _scalping_worker():
     while True:
         try:
+            if not _is_market_open():
+                _sleep_until_next_open()
+                continue
             items = scan_scalping()
             items = _attach_ai(items, "scalping")
             with _lock:
@@ -998,6 +1058,9 @@ def _scalping_worker():
 def _swing_worker():
     while True:
         try:
+            if not _is_market_open():
+                _sleep_until_next_open()
+                continue
             items = scan_swing()
             items = _attach_ai(items, "swing")
             with _lock:
@@ -1013,6 +1076,9 @@ def _swing_worker():
 def _bpjs_worker():
     while True:
         try:
+            if not _is_market_open():
+                _sleep_until_next_open()
+                continue
             items = scan_bpjs()
             items = _attach_ai(items, "bpjs")
             with _lock:
@@ -1028,6 +1094,9 @@ def _bpjs_worker():
 def _bsjp_worker():
     while True:
         try:
+            if not _is_market_open():
+                _sleep_until_next_open()
+                continue
             items = scan_bsjp()
             items = _attach_ai(items, "bsjp")
             with _lock:
@@ -1058,6 +1127,7 @@ def index():
         title=APP_TITLE,
         max_tickers=MAX_TICKERS,
         ui_poll=UI_POLL_SECONDS,
+        today_label=_today_label(),
     )
 
 
@@ -1131,7 +1201,7 @@ def api_fundamentals(ticker):
 
 @app.route("/api/health")
 def api_health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "market_open": _is_market_open(), "now": _now_iso()})
 
 
 def main():

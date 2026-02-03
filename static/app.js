@@ -109,32 +109,29 @@ const buildCorporateTable = (items) => {
   if (!items || items.length === 0) {
     return '<div class="empty">Belum ada berita corporate action.</div>';
   }
-  const header = `
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Tag</th>
-            <th>Perihal</th>
-            <th>Tanggal</th>
-            <th>Sumber</th>
-            <th>AI</th>
-            <th>AI Report</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-  const rows = items.map((item) => `
-      <tr>
-        <td><span class="badge badge-watch">${fmt(item.tag)}</span></td>
-        <td>${item.url ? `<a href="${item.url}" target="_blank" rel="noreferrer">${fmt(item.title)}</a>` : fmt(item.title)}</td>
-        <td>${fmt(item.date)}</td>
-        <td>${fmt(item.source)}</td>
-        <td>${aiBadge(item.ai)}</td>
-        <td>${aiReport(item.ai)}</td>
-      </tr>
-  `).join("");
-  return header + rows + "</tbody></table></div>";
+  const cards = items.slice(0, 10).map((item) => {
+    const image = item.image
+      ? `<div class="ca-image" style="background-image: url('${item.image}')"></div>`
+      : `<div class="ca-image ca-placeholder"></div>`;
+    const title = item.url
+      ? `<a href="${item.url}" target="_blank" rel="noreferrer">${fmt(item.title)}</a>`
+      : fmt(item.title);
+    return `
+      <article class="ca-card">
+        ${image}
+        <div class="ca-body">
+          <div class="ca-tag">${fmt(item.tag)}</div>
+          <h3>${title}</h3>
+          <div class="ca-meta">${fmt(item.date)} • ${fmt(item.source)}</div>
+          <div class="ca-ai">
+            ${aiBadge(item.ai)}
+            ${aiReport(item.ai)}
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
+  return `<div class="ca-grid">${cards}</div>`;
 };
 
 const renderFundamentals = (data) => {
@@ -234,6 +231,21 @@ const bindFundControls = () => {
   });
 };
 
+const initTheme = () => {
+  const saved = localStorage.getItem("theme");
+  if (saved) {
+    document.body.setAttribute("data-theme", saved);
+  }
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const current = document.body.getAttribute("data-theme") || "light";
+    const next = current === "dark" ? "light" : "dark";
+    document.body.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+  });
+};
+
 const buildDailyTable = (items) => {
   if (!items || items.length === 0) {
     return '<div class="empty">Belum ada hasil screener.</div>';
@@ -281,6 +293,15 @@ async function refresh() {
     fetch("/api/bpjs").then((r) => r.json()),
   ]);
 
+  fetch("/api/health")
+    .then((r) => r.json())
+    .then((health) => {
+      const status = health.market_open ? "Open" : "Closed";
+      const now = health.now || "-";
+      document.getElementById("market-status").textContent = `Market: ${status} • ${now}`;
+    })
+    .catch(() => {});
+
   document.getElementById("scalping-updated").textContent = scalping.updated_at || "-";
   if (scalping.stats) {
     const lossRate = scalping.stats.loss_rate ?? null;
@@ -314,6 +335,7 @@ async function refresh() {
 refresh();
 bindTableClicks();
 bindFundControls();
+initTheme();
 setInterval(refresh, window.UI_POLL_SECONDS ? window.UI_POLL_SECONDS * 1000 : 1000);
 
 const openModal = (title, content) => {
