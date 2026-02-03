@@ -235,6 +235,18 @@ body {
   gap: 16px;
 }
 
+.panel-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.title-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .panel h2 {
   margin: 0 0 4px;
   font-size: 1.2rem;

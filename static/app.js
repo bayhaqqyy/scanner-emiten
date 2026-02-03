@@ -322,8 +322,9 @@ async function refresh() {
       const status = health.market_open ? "Open" : "Closed";
       const session = health.market_status || "-";
       const now = health.now || "-";
-      document.getElementById("market-status").textContent =
-        `Market: ${status} (${session}) - ${now}`;
+      document.querySelectorAll(".market-status").forEach((el) => {
+        el.textContent = `Market: ${status} (${session}) - ${now}`;
+      });
     })
     .catch(() => {});
 
