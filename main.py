@@ -2020,7 +2020,10 @@ def get_ihsg():
     if df.empty or len(df) < 2:
         return None
 
-    close_s = df["Close"].dropna().astype(float)
+    close_s = df["Close"].squeeze()
+    if hasattr(close_s, "ndim") and close_s.ndim != 1:
+        close_s = close_s.iloc[:, 0]
+    close_s = close_s.dropna().astype(float)
     last_close = float(close_s.iloc[-1])
     prev_close = float(close_s.iloc[-2])
     change = ((last_close - prev_close) / prev_close) * 100
@@ -2037,7 +2040,7 @@ def get_ihsg():
 
     data = {
         "labels": [idx.strftime("%Y-%m-%d") for idx in close_s.index],
-        "close": [float(v) for v in close_s.values],
+        "close": [float(v) for v in close_s.to_numpy()],
         "meta": payload,
         "updated_at": _now_iso(),
     }
