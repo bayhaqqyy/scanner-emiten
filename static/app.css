@@ -641,6 +641,40 @@ th {
   font-size: 0.8rem;
 }
 
+.ihsg-wrap {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 18px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.ihsg-chart {
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.ihsg-meta {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.ihsg-ai {
+  font-size: 0.95rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .ihsg-wrap {
+    grid-template-columns: 1fr;
+  }
+}
+
 .review-card {
   border: 1px solid var(--line);
   border-radius: 14px;

@@ -54,14 +54,61 @@
   <section class="panel panel-slim">
     <h2>Tentang Aplikasi</h2>
     <p class="hero-meta">
-      Aplikasi ini dibuat untuk membantu riset teknikal harian: memilih emiten dengan likuiditas tinggi,
-      membaca momentum jangka pendek, dan mengamati reaksi pasar terhadap aksi korporasi.
-      Seluruh data diproses otomatis dan ditampilkan dalam format report agar kamu bisa
-      menentukan prioritas riset tanpa kehilangan konteks.
+      Daily Report Saham dirancang sebagai ringkasan harian yang fokus pada tiga kebutuhan utama trader ritel:
+      menemukan peluang jangka pendek (scalping), menjaga konsistensi trade jangka pendek-menengah (swing),
+      dan membaca berita corporate action yang berpotensi mengubah sentimen pasar.
+      Setiap strategi punya halaman khusus agar kamu bisa fokus pada satu gaya trading tanpa distraksi.
     </p>
     <p class="hero-meta">
-      Perlu dicatat, semua output adalah informasi edukasi, bukan ajakan beli/jual.
-      Selalu gunakan manajemen risiko dan verifikasi tambahan sebelum mengambil keputusan.
+      Di halaman Scalping, kamu akan melihat entry plan, harga sekarang, P/L%, dan TP bertingkat
+      yang terus diperbarui selama sesi bursa. Halaman Swing menampilkan watchlist dengan filter tren yang lebih ketat.
+      BSJP dan BPJS membantu menemukan kandidat untuk strategi buy-sell harian. Corporate Action menampilkan
+      highlight berita dengan ringkasan AI dan visual agar lebih mudah dipahami.
     </p>
+    <p class="hero-meta">
+      Aplikasi ini bukan sinyal beli/jual. Seluruh data bersifat informatif dan edukatif.
+      Gunakan manajemen risiko yang sesuai, lakukan validasi tambahan, dan pertimbangkan kondisi pasar
+      sebelum mengambil keputusan.
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>IHSG Snapshot</h2>
+        <div class="panel-meta">Ringkasan kondisi IHSG dan arah tren terbaru.</div>
+      </div>
+      <div class="panel-side">
+        <div class="panel-badge">IHSG</div>
+        <div class="title-status market-status">Market: -</div>
+      </div>
+    </div>
+    <div class="ihsg-wrap">
+      <div class="ihsg-chart">
+        <div class="tradingview-widget-container">
+          <div id="tv-ihsg-widget"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+            new TradingView.widget({
+              "symbol": "IDX:COMPOSITE",
+              "interval": "D",
+              "timezone": "Asia/Jakarta",
+              "theme": "light",
+              "style": "1",
+              "locale": "id",
+              "toolbar_bg": "#f5f3ee",
+              "enable_publishing": false,
+              "hide_side_toolbar": true,
+              "allow_symbol_change": false,
+              "container_id": "tv-ihsg-widget"
+            });
+          </script>
+        </div>
+      </div>
+      <div>
+        <div id="ihsg-meta" class="ihsg-meta"></div>
+        <div id="ihsg-ai" class="ihsg-ai"></div>
+      </div>
+    </div>
   </section>
 {% endblock %}

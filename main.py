@@ -31,6 +31,7 @@ BSJP_VOL_MULT = float(os.getenv("BSJP_VOL_MULT", "1.5"))
 BSJP_VALUE_MIN = float(os.getenv("BSJP_VALUE_MIN", "10000000000"))
 BSJP_RET_MIN = float(os.getenv("BSJP_RET_MIN", "0.5"))
 BPJS_VALUE_MIN = float(os.getenv("BPJS_VALUE_MIN", "2000000000"))
+IHSG_CACHE_MINUTES = int(os.getenv("IHSG_CACHE_MINUTES", "10"))
 UI_POLL_SECONDS = int(os.getenv("UI_POLL_SECONDS", "1"))
 AI_ENABLED = os.getenv("AI_ENABLED", "1") == "1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -88,6 +89,7 @@ _scalping_cache = {"items": [], "updated_at": None, "error": None}
 _swing_cache = {"items": [], "updated_at": None, "error": None}
 _bsjp_cache = {"items": [], "updated_at": None, "error": None}
 _bpjs_cache = {"items": [], "updated_at": None, "error": None}
+_ihsg_cache = {"data": None, "at": None}
 _ai_cache = {}
 _ca_cache = {"items": [], "updated_at": None, "error": None, "at": None}
 _scalp_call_base = {}
@@ -463,6 +465,15 @@ def _ai_prompt(item, kind):
             + f"Volume: {item.get('volume')}\n"
             + f"Value: {item.get('tx_value')}\n"
             + "Explain why it qualifies and whether it looks good for the next session.\n"
+        )
+    if kind == "ihsg":
+        return (
+            base
+            + "Context: IHSG (IDX Composite) daily snapshot.\n"
+            + f"Last Close: {item.get('last_close')}\n"
+            + f"Change%: {item.get('change_pct')}\n"
+            + f"Trend: {item.get('trend')}\n"
+            + "Provide a clear, longer explanation of market condition and key risks.\n"
         )
     if kind == "session_review":
         return (
@@ -1228,6 +1239,47 @@ def scan_bsjp():
     return results[:30]
 
 
+def get_ihsg():
+    now = datetime.now(_LOCAL_TZ)
+    if _ihsg_cache["at"] and (now - _ihsg_cache["at"]).total_seconds() < IHSG_CACHE_MINUTES * 60:
+        return _ihsg_cache["data"]
+
+    df = yf.download(
+        "^JKSE",
+        period="6mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=False,
+    )
+    if df.empty or len(df) < 2:
+        return None
+
+    close_s = df["Close"].dropna()
+    last_close = float(close_s.iloc[-1])
+    prev_close = float(close_s.iloc[-2])
+    change = ((last_close - prev_close) / prev_close) * 100
+    ema_20 = ema(close_s, 20).iloc[-1]
+    trend = "di atas EMA20" if last_close > ema_20 else "di bawah EMA20"
+
+    payload = {
+        "last_close": _format_price(last_close),
+        "change_pct": round(change, 2),
+        "trend": trend,
+    }
+    if _ai_allowed():
+        payload["ai"] = _ai_analyze(payload, "ihsg", key_override=_today_key())
+
+    data = {
+        "labels": [idx.strftime("%Y-%m-%d") for idx in close_s.index],
+        "close": [float(v) for v in close_s.values],
+        "meta": payload,
+        "updated_at": _now_iso(),
+    }
+    _ihsg_cache["data"] = data
+    _ihsg_cache["at"] = now
+    return data
+
+
 def _scalping_worker():
     while True:
         try:
@@ -1427,6 +1479,14 @@ def api_bpjs():
     with _lock:
         payload = dict(_bpjs_cache)
     return jsonify(payload)
+
+
+@app.route("/api/ihsg")
+def api_ihsg():
+    data = get_ihsg()
+    if not data:
+        return jsonify({"error": "IHSG data unavailable"}), 503
+    return jsonify(data)
 
 
 @app.route("/api/corporate-actions")

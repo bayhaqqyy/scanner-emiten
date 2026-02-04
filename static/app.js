@@ -307,13 +307,39 @@ const buildReview = (review) => {
   `;
 };
 
+const renderIHSG = (payload) => {
+  if (!payload) return;
+  const meta = payload.meta || {};
+  const ai = meta.ai || {};
+
+  const metaEl = document.getElementById("ihsg-meta");
+  if (metaEl) {
+    metaEl.textContent =
+      `Last Close: ${formatNumber(meta.last_close, 2)} | Change: ${formatNumber(meta.change_pct, 2)}% | Trend: ${meta.trend || "-"}`;
+  }
+
+  const aiTextParts = [
+    ai.summary || "",
+    ai.market_behavior || "",
+    ai.what_worked || "",
+    ai.what_failed || "",
+    ai.action || "",
+    ai.risk || "",
+  ].filter(Boolean);
+  const aiEl = document.getElementById("ihsg-ai");
+  if (aiEl) {
+    aiEl.textContent = aiTextParts.length ? aiTextParts.join(" ") : "AI belum tersedia.";
+  }
+};
+
 async function refresh() {
-  const [scalping, swing, corporate, bsjp, bpjs] = await Promise.all([
+  const [scalping, swing, corporate, bsjp, bpjs, ihsg] = await Promise.all([
     fetch("/api/scalping").then((r) => r.json()),
     fetch("/api/swing").then((r) => r.json()),
     fetch("/api/corporate-actions").then((r) => r.json()),
     fetch("/api/bsjp").then((r) => r.json()),
     fetch("/api/bpjs").then((r) => r.json()),
+    fetch("/api/ihsg").then((r) => r.json()),
   ]);
 
   fetch("/api/health")
@@ -372,6 +398,10 @@ async function refresh() {
   setText("bpjs-updated", bpjs.updated_at || "-");
   setText("bpjs-error", bpjs.error || "");
   setHtml("bpjs-table", buildDailyTable(bpjs.items));
+
+  if (!ihsg.error) {
+    renderIHSG(ihsg);
+  }
 }
 
 refresh();
