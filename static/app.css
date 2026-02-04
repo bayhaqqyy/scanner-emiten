@@ -643,7 +643,7 @@ th {
 
 .ihsg-wrap {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 2.2fr 1fr;
   gap: 18px;
   align-items: start;
   margin-top: 12px;
@@ -655,6 +655,28 @@ th {
   border-radius: 16px;
   overflow: hidden;
   background: var(--panel);
+}
+
+.ihsg-side {
+  position: sticky;
+  top: 92px;
+}
+
+.ihsg-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--panel);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+}
+
+.ihsg-card-title {
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .ihsg-meta {
@@ -669,9 +691,18 @@ th {
   line-height: 1.5;
 }
 
+.ihsg-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 12px 0;
+}
+
 @media (max-width: 900px) {
   .ihsg-wrap {
     grid-template-columns: 1fr;
+  }
+  .ihsg-side {
+    position: static;
   }
 }
 

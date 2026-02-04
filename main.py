@@ -41,22 +41,28 @@ OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE", "").strip()
 AI_COOLDOWN_MINUTES = int(os.getenv("AI_COOLDOWN_MINUTES", "20"))
 AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 
-# Scalping rules (1m data)
+# Scalping rules (5m data)
 SCALP_EMA_FAST = int(os.getenv("SCALP_EMA_FAST", "9"))
 SCALP_EMA_SLOW = int(os.getenv("SCALP_EMA_SLOW", "21"))
 SCALP_RSI_LEN = int(os.getenv("SCALP_RSI_LEN", "14"))
-SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "55"))
-SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "68"))
-SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.5"))
+SCALP_RSI_MIN = float(os.getenv("SCALP_RSI_MIN", "48"))
+SCALP_RSI_MAX = float(os.getenv("SCALP_RSI_MAX", "62"))
+SCALP_VOL_SPIKE = float(os.getenv("SCALP_VOL_SPIKE", "1.2"))
 SCALP_ATR_LEN = int(os.getenv("SCALP_ATR_LEN", "14"))
 SCALP_R_MULT = float(os.getenv("SCALP_R_MULT", "2.0"))
-SCALP_BREAKOUT_LOOKBACK = int(os.getenv("SCALP_BREAKOUT_LOOKBACK", "5"))
-SCALP_SOLID_BODY_MIN = float(os.getenv("SCALP_SOLID_BODY_MIN", "0.65"))
-SCALP_UPPER_SHADOW_MAX = float(os.getenv("SCALP_UPPER_SHADOW_MAX", "0.35"))
-SCALP_TX_VALUE_MIN = float(os.getenv("SCALP_TX_VALUE_MIN", "8000000000"))
+SCALP_BREAKOUT_LOOKBACK = int(os.getenv("SCALP_BREAKOUT_LOOKBACK", "3"))
+SCALP_SOLID_BODY_MIN = float(os.getenv("SCALP_SOLID_BODY_MIN", "0.0"))
+SCALP_UPPER_SHADOW_MAX = float(os.getenv("SCALP_UPPER_SHADOW_MAX", "0.0"))
+SCALP_TX_VALUE_MIN = float(os.getenv("SCALP_TX_VALUE_MIN", "10000000000"))
+SCALP_ATR_MIN_PCT = float(os.getenv("SCALP_ATR_MIN_PCT", "1.0"))
+SCALP_ATR_MAX_PCT = float(os.getenv("SCALP_ATR_MAX_PCT", "3.0"))
+SCALP_MAX_FROM_OPEN_PCT = float(os.getenv("SCALP_MAX_FROM_OPEN_PCT", "5.0"))
+SCALP_VWAP_TOL_PCT = float(os.getenv("SCALP_VWAP_TOL_PCT", "0.3"))
 SCALP_HTF_EMA = int(os.getenv("SCALP_HTF_EMA", "20"))
-SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "8"))
-SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "6"))
+SCALP_HTF_RESIST_PCT = float(os.getenv("SCALP_HTF_RESIST_PCT", "0.3"))
+SCALP_MOMENTUM_REQUIRED = int(os.getenv("SCALP_MOMENTUM_REQUIRED", "3"))
+SCALP_MIN_SCORE = int(os.getenv("SCALP_MIN_SCORE", "3"))
+SCALP_WATCH_SCORE = int(os.getenv("SCALP_WATCH_SCORE", "2"))
 
 # Swing rules (1d data)
 SWING_EMA_FAST = int(os.getenv("SWING_EMA_FAST", "20"))
@@ -517,6 +523,44 @@ def _ai_prompt(item, kind):
     return base + "Context: General analysis.\n"
 
 
+def build_swing_scanner_prompt(features_list):
+    features_text = ", ".join(features_list) if features_list else "-"
+    return (
+        "You are a trading assistant. Return valid JSON only.\n"
+        "Focus on Indonesia stocks NON-IDX30.\n"
+        "Group price buckets: <100, 100-499, 500-999, 1000-4999.\n"
+        "Pick Top 10 signals and Top 3 ready-to-enter signals.\n"
+        "Prefer trend + breakout/pullback valid, volume confirmation, small risk, RR>=1.5.\n"
+        "Avoid pump (single candle >20%) and avoid far above EMA20.\n"
+        "Output must be strict JSON and follow schema:\n"
+        '{ "signals":[{...}], "watchlist":[...], "rejected":{...} }\n'
+        "No extra text outside JSON.\n"
+        f"Features: {features_text}\n"
+    )
+
+
+def _parse_swing_scanner_json(content):
+    try:
+        data = json.loads(content)
+    except Exception:
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not match:
+            return None, "Invalid JSON"
+        try:
+            data = json.loads(match.group(0))
+        except Exception:
+            return None, "Invalid JSON"
+    if not isinstance(data, dict):
+        return None, "Invalid JSON root"
+    if "signals" not in data or "watchlist" not in data or "rejected" not in data:
+        return None, "Missing required keys"
+    if not isinstance(data["signals"], list) or not isinstance(data["watchlist"], list):
+        return None, "signals/watchlist must be lists"
+    if not isinstance(data["rejected"], dict):
+        return None, "rejected must be object"
+    return data, None
+
+
 def _ai_analyze(item, kind, key_override=None):
     if not _ai_allowed():
         return None
@@ -884,17 +928,15 @@ def scan_scalping():
         try:
             df = yf.download(
                 ticker_jk,
-                period="1d",
-                interval="1m",
+                period="5d",
+                interval="5m",
                 progress=False,
                 auto_adjust=False,
             )
             if df.empty or len(df) < max(SCALP_EMA_SLOW, SCALP_RSI_LEN, SCALP_ATR_LEN) + 5:
                 continue
 
-            df_5m = resample_ohlcv(df, "5min")
-            if df_5m.empty or len(df_5m) < SCALP_HTF_EMA + 2:
-                continue
+            df_15m = resample_ohlcv(df, "15min")
 
             close_s = df["Close"].squeeze()
             high_s = df["High"].squeeze()
@@ -919,59 +961,86 @@ def scan_scalping():
                 price_now = None
             price_now = float(price_now) if price_now else last_close
 
-            ema_fast_series = ema(close_s, SCALP_EMA_FAST)
-            ema_slow_series = ema(close_s, SCALP_EMA_SLOW)
-            ema_fast = ema_fast_series.iloc[-1]
-            ema_slow = ema_slow_series.iloc[-1]
+            day_open = float(open_s.iloc[0])
+            from_open_pct = ((price_now - day_open) / day_open) * 100 if day_open else 0
+
             rsi_val = rsi(close_s, SCALP_RSI_LEN).iloc[-1]
             vwap_series = vwap(high_s, low_s, close_s, vol_s)
             vwap_val = vwap_series.iloc[-1]
             vwap_diff = (last_close / vwap_val - 1) * 100
             avg_vol = vol_s.tail(20).mean()
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
-            atr_val = atr(high_s, low_s, close_s, SCALP_ATR_LEN).iloc[-1]
 
             tx_value = float((close_s * vol_s).sum())
             vwap_rising = vwap_series.iloc[-1] > vwap_series.iloc[-2]
-            ema_gap = ema_fast - ema_slow
-            ema_gap_prev = ema_fast_series.iloc[-2] - ema_slow_series.iloc[-2]
-            ema_widening = ema_gap > ema_gap_prev
+            vwap_ok = price_now >= vwap_val * (1 - SCALP_VWAP_TOL_PCT / 100)
+
+            ema_fast_series = ema(close_s, SCALP_EMA_FAST)
+            ema_slow_series = ema(close_s, SCALP_EMA_SLOW)
+            ema_fast = ema_fast_series.iloc[-1]
+            ema_slow = ema_slow_series.iloc[-1]
+            ema_cross = ema_fast >= ema_slow or (
+                ema_fast_series.iloc[-2] < ema_slow_series.iloc[-2] and ema_fast >= ema_slow
+            )
+            ema_htf = ema(close_s, SCALP_HTF_EMA)
+            htf_trend = close_s.iloc[-1] > ema_htf.iloc[-1] and ema_htf.iloc[-1] >= ema_htf.iloc[-2]
 
             lookback = max(2, SCALP_BREAKOUT_LOOKBACK)
             recent_high = high_s.iloc[-lookback - 1 : -1].max()
-            break_high = last_close > recent_high if pd.notna(recent_high) else False
+            break_high = close_s.iloc[-1] > recent_high if pd.notna(recent_high) else False
 
             def solid_green(idx):
                 body = abs(close_s.iloc[idx] - open_s.iloc[idx])
                 rng = high_s.iloc[idx] - low_s.iloc[idx]
                 if rng <= 0:
                     return False
-                return close_s.iloc[idx] > open_s.iloc[idx] and (body / rng) >= SCALP_SOLID_BODY_MIN
+                return close_s.iloc[idx] > open_s.iloc[idx] and body > (high_s.iloc[idx] - close_s.iloc[idx])
 
-            momentum_2 = solid_green(-1) and solid_green(-2)
             body = abs(close_s.iloc[-1] - open_s.iloc[-1])
             rng = high_s.iloc[-1] - low_s.iloc[-1]
             upper_shadow = high_s.iloc[-1] - max(close_s.iloc[-1], open_s.iloc[-1])
-            upper_shadow_ratio = upper_shadow / rng if rng > 0 else 0
+            body_gt_shadow = body > upper_shadow if rng > 0 else False
 
-            close_5m = df_5m["Close"]
-            ema_5m = ema(close_5m, SCALP_HTF_EMA)
-            htf_trend = close_5m.iloc[-1] > ema_5m.iloc[-1] and ema_5m.iloc[-1] > ema_5m.iloc[-2]
+            htf_resist_ok = True
+            if not df_15m.empty and len(df_15m) > 5:
+                res_high = df_15m["High"].iloc[-6:-1].max()
+                htf_resist_ok = price_now <= res_high * (1 - SCALP_HTF_RESIST_PCT / 100)
 
-            conditions = [
-                ("tx_value_min", tx_value >= tx_value_min),
-                ("price_above_vwap", last_close > vwap_val),
-                ("vwap_rising", vwap_rising),
-                ("ema_trend", ema_fast > ema_slow),
-                ("ema_widening", ema_widening),
-                ("rsi_ok", rsi_min <= rsi_val <= rsi_max),
+            atr_pct_ok = True
+            try:
+                df_d = yf.download(
+                    ticker_jk,
+                    period="20d",
+                    interval="1d",
+                    progress=False,
+                    auto_adjust=False,
+                )
+                if not df_d.empty and len(df_d) >= SCALP_ATR_LEN:
+                    atr_d = atr(df_d["High"], df_d["Low"], df_d["Close"], SCALP_ATR_LEN).iloc[-1]
+                    atr_pct = (atr_d / df_d["Close"].iloc[-1]) * 100 if atr_d else 0
+                    atr_pct_ok = SCALP_ATR_MIN_PCT <= atr_pct <= SCALP_ATR_MAX_PCT
+            except Exception:
+                atr_pct_ok = True
+
+            filters_ok = (
+                tx_value >= tx_value_min
+                and atr_pct_ok
+                and from_open_pct < SCALP_MAX_FROM_OPEN_PCT
+            )
+
+            vwap_reclaim = close_s.iloc[-2] < vwap_series.iloc[-2] and close_s.iloc[-1] > vwap_val
+            price_vwap_ok = vwap_ok or vwap_reclaim
+            trend_ok = price_vwap_ok and vwap_rising and ema_cross and htf_trend
+
+            entry_conditions = [
+                ("break_prev_high", break_high),
                 ("vol_spike", vol_spike >= vol_spike_min),
-                ("break_high_minor", break_high),
-                ("momentum_2_green", momentum_2),
-                ("htf_trend", htf_trend),
-                ("no_long_upper", upper_shadow_ratio <= SCALP_UPPER_SHADOW_MAX),
+                ("rsi_ok", rsi_min <= rsi_val <= rsi_max),
+                ("body_gt_shadow", body_gt_shadow),
+                ("htf_resist_ok", htf_resist_ok),
             ]
-            score, reasons = _score_conditions(conditions)
+            entry_score, _ = _score_conditions(entry_conditions)
+            score = entry_score
 
             if symbol in _scalp_active:
                 item = _scalp_active[symbol]
@@ -1002,7 +1071,14 @@ def scan_scalping():
                     continue
                 continue
 
-            if not active_mode and score >= watch_score and len(_scalp_active) < SCALP_ACTIVE_LIMIT:
+            if (
+                not active_mode
+                and filters_ok
+                and trend_ok
+                and break_high
+                and score >= min_score
+                and len(_scalp_active) < SCALP_ACTIVE_LIMIT
+            ):
                 entry, sl, tp, risk = _trade_plan(
                     price_now, atr_val, sl_atr=1.0, r_mult=SCALP_R_MULT
                 )
@@ -1043,7 +1119,7 @@ def scan_scalping():
                     "risk": risk,
                     "score": score,
                     "reasons": reasons,
-                    "status": "signal" if score >= min_score else "watch",
+                    "status": "signal",
                 }
                 _scalp_active[symbol] = item
         except Exception:
