@@ -2020,12 +2020,12 @@ def get_ihsg():
     if df.empty or len(df) < 2:
         return None
 
-    close_s = df["Close"].dropna()
+    close_s = df["Close"].dropna().astype(float)
     last_close = float(close_s.iloc[-1])
     prev_close = float(close_s.iloc[-2])
     change = ((last_close - prev_close) / prev_close) * 100
-    ema_20 = ema(close_s, 20).iloc[-1]
-    trend = "di atas EMA20" if last_close > ema_20 else "di bawah EMA20"
+    ema_20_val = float(ema(close_s, 20).iloc[-1])
+    trend = "di atas EMA20" if last_close > ema_20_val else "di bawah EMA20"
 
     payload = {
         "last_close": _format_price(last_close),
