@@ -1837,6 +1837,7 @@ def scan_scalping():
             vwap_diff = (last_close / vwap_val - 1) * 100
             avg_vol = vol_s.tail(20).mean()
             vol_spike = (vol_s.iloc[-1] / avg_vol) if avg_vol and avg_vol > 0 else 0
+            atr_val = atr(high_s, low_s, close_s, SCALP_ATR_LEN).iloc[-1]
 
             tx_value = float((close_s * vol_s).sum())
             vwap_rising = vwap_series.iloc[-1] > vwap_series.iloc[-2]
@@ -1906,7 +1907,7 @@ def scan_scalping():
                 ("body_gt_shadow", body_gt_shadow),
                 ("htf_resist_ok", htf_resist_ok),
             ]
-            entry_score, _ = _score_conditions(entry_conditions)
+            entry_score, reasons = _score_conditions(entry_conditions)
             score = entry_score
 
             if symbol in _scalp_active:
@@ -1990,7 +1991,8 @@ def scan_scalping():
                     "status": "signal",
                 }
                 _scalp_active[symbol] = item
-        except Exception:
+        except Exception as exc:
+            print("[SCALP ERROR]", symbol, _safe_error_message(exc))
             continue
 
         time.sleep(YF_SLEEP_SECONDS)
