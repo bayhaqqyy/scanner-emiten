@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
@@ -43,6 +44,8 @@ AI_MAX_ITEMS = int(os.getenv("AI_MAX_ITEMS", "5"))
 AI_REPORT_TTL_SECONDS = int(os.getenv("AI_REPORT_TTL_SECONDS", "600"))
 SCALPING_REPORT_TTL_SECONDS = int(os.getenv("SCALPING_REPORT_TTL_SECONDS", "120"))
 SWING_REPORT_TTL_SECONDS = int(os.getenv("SWING_REPORT_TTL_SECONDS", "1800"))
+NEWS_CACHE_MINUTES = int(os.getenv("NEWS_CACHE_MINUTES", "15"))
+NEWS_MAX_ITEMS = int(os.getenv("NEWS_MAX_ITEMS", "60"))
 AI_CACHE_MAX_ITEMS = int(os.getenv("AI_CACHE_MAX_ITEMS", "1000"))
 AI_REPORT_CACHE_MAX_ITEMS = int(os.getenv("AI_REPORT_CACHE_MAX_ITEMS", "2000"))
 AI_CACHE_TTL_SECONDS = int(
@@ -115,6 +118,7 @@ _swing_cache = {"items": [], "updated_at": None, "error": None}
 _bsjp_cache = {"items": [], "updated_at": None, "error": None}
 _bpjs_cache = {"items": [], "updated_at": None, "error": None}
 _ihsg_cache = {"data": None, "at": None}
+_news_cache = {"items": [], "updated_at": None, "error": None, "at": None}
 _ai_cache = {}
 _ai_report_cache = {}
 _ai_cache_lock = threading.Lock()
@@ -1413,6 +1417,180 @@ def _parse_ksei_today(html, base_url):
     return items
 
 
+def _rss_find(item, tag_name):
+    for child in list(item):
+        if child.tag.endswith(tag_name):
+            return child.text
+    return None
+
+
+def _parse_rss_feed(xml_text, source):
+    items = []
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return items
+    for node in root.iter():
+        if not node.tag.endswith("item"):
+            continue
+        title = _rss_find(node, "title")
+        link = _rss_find(node, "link")
+        pub_date = _rss_find(node, "pubDate")
+        description = _rss_find(node, "description")
+        title = _normalize_space(title)
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "summary": _normalize_space(description),
+                "date": pub_date,
+                "source": source,
+                "url": link,
+            }
+        )
+    return items
+
+
+def _parse_idx_press_release(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+    for link in soup.find_all("a", href=True):
+        href = link.get("href")
+        if not href:
+            continue
+        if "press-release" not in href:
+            continue
+        title = _normalize_space(link.get_text(" ", strip=True))
+        if not title or len(title) < 6:
+            continue
+        items.append(
+            {
+                "title": title,
+                "date": None,
+                "source": "IDX Press Release",
+                "url": urljoin(base_url, href),
+            }
+        )
+    return items
+
+
+def _parse_ksei_news(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+    current_date = None
+    for node in soup.find_all(["h2", "h3", "a", "p", "li"]):
+        if node.name in ("h2", "h3"):
+            date_text = _extract_date(node.get_text(" ", strip=True))
+            if date_text:
+                current_date = date_text
+            continue
+        if node.name == "a":
+            title = _normalize_space(node.get_text(" ", strip=True))
+            href = node.get("href")
+            if not title:
+                continue
+            items.append(
+                {
+                    "title": title,
+                    "date": current_date,
+                    "source": "KSEI News",
+                    "url": urljoin(base_url, href) if href else None,
+                }
+            )
+    return items
+
+
+def _news_relevant(title, summary, source):
+    if source in ("IDX Press Release", "KSEI News"):
+        return True
+    text = f"{title} {summary}".lower()
+    keywords = [
+        "idx",
+        "bei",
+        "ihsg",
+        "saham",
+        "emiten",
+        "tender",
+        "dividen",
+        "right issue",
+        "rights issue",
+        "rups",
+        "akuisisi",
+        "merger",
+        "ipo",
+        "obligasi",
+        "buyback",
+        "aksi korporasi",
+    ]
+    return any(keyword in text for keyword in keywords)
+
+
+def _extract_ticker_from_title(title):
+    if not title:
+        return None
+    match = re.search(r"\(([A-Z]{3,5})\)", title)
+    return match.group(1) if match else None
+
+
+def fetch_news():
+    now = datetime.now(_LOCAL_TZ)
+    if _news_cache["at"] and (now - _news_cache["at"]).total_seconds() < NEWS_CACHE_MINUTES * 60:
+        return _news_cache["items"]
+
+    items = []
+    errors = []
+    try:
+        html = _fetch_html("https://www.idx.co.id/en/news/press-release")
+        items.extend(_parse_idx_press_release(html, "https://www.idx.co.id"))
+    except Exception as exc:
+        errors.append(_safe_error_message(exc))
+
+    try:
+        html = _fetch_html("https://web.ksei.co.id/ksei_news")
+        items.extend(_parse_ksei_news(html, "https://web.ksei.co.id"))
+    except Exception as exc:
+        errors.append(_safe_error_message(exc))
+
+    rss_sources = [
+        ("ANTARA Bursa", "https://en.antaranews.com/rss/ekonomi-bursa.xml"),
+        ("ANTARA Finansial", "https://en.antaranews.com/rss/ekonomi-finansial.xml"),
+    ]
+    for source, url in rss_sources:
+        try:
+            xml_text = _fetch_html(url)
+            items.extend(_parse_rss_feed(xml_text, source))
+        except Exception as exc:
+            errors.append(_safe_error_message(exc))
+
+    dedup = {}
+    filtered = []
+    for item in items:
+        title = item.get("title")
+        url = item.get("url")
+        key = (title or "").lower(), (url or "").lower()
+        if key in dedup:
+            continue
+        dedup[key] = True
+        if not _news_relevant(title or "", item.get("summary") or "", item.get("source") or ""):
+            continue
+        symbol = _extract_ticker_from_title(title or "")
+        if symbol:
+            item["symbol"] = symbol
+        filtered.append(item)
+
+    filtered = filtered[:NEWS_MAX_ITEMS]
+    if _ai_allowed():
+        _attach_ai_reports(filtered, "news", "1D")
+
+    with _lock:
+        _news_cache["items"] = filtered
+        _news_cache["updated_at"] = _now_iso()
+        _news_cache["error"] = "; ".join(errors) if errors else None
+        _news_cache["at"] = now
+    return filtered
+
+
 def fetch_corporate_actions():
     now = datetime.now(_LOCAL_TZ)
     if _ca_cache["at"] and (now - _ca_cache["at"]).total_seconds() < CA_CACHE_MINUTES * 60:
@@ -2278,6 +2456,22 @@ def api_ihsg():
     if not data:
         return jsonify({"error": "IHSG data unavailable"}), 503
     return jsonify(data)
+
+
+@app.route("/api/news")
+def api_news():
+    try:
+        fetch_news()
+    except Exception as exc:
+        with _lock:
+            _news_cache["items"] = []
+            _news_cache["updated_at"] = _now_iso()
+            _news_cache["error"] = _safe_error_message(exc)
+            _news_cache["at"] = datetime.now(_LOCAL_TZ)
+    with _lock:
+        payload = dict(_news_cache)
+    payload = _ensure_ai_reports_payload(payload, "news", "1D")
+    return jsonify(payload)
 
 
 @app.route("/api/corporate-actions")
